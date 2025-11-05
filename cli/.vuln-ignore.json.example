@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "ignores": [
+    {
+      "id": "CVE-2024-1234",
+      "reason": "False positive - not applicable to our use case",
+      "expires": "2025-12-31"
+    },
+    {
+      "package": "lodash",
+      "packageVersion": "4.17.21",
+      "reason": "Known issue, upgrading in next release",
+      "expires": "2025-06-30"
+    },
+    {
+      "package": "legacy-package",
+      "reason": "Legacy package, will be removed in Q2 2025"
+    },
+    {
+      "id": "GHSA-xxxx-xxxx-xxxx",
+      "reason": "Mitigated via configuration",
+      "expires": "2025-03-31"
+    }
+  ]
+}

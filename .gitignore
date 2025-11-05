@@ -1,0 +1,51 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+dist
+build
+.next
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cache
+.cache
+*.log
+
+# Test coverage
+coverage
+
+# Husky
+.husky/_/
+
+# Socket data
+.socket/
+~/.socket-hw/
+
+# Large Files
+*.pdf
+*.docx
+*.doc
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+*.zip
+*.rar
+*.7z
+
+# Unnecessary Research Files
+docs/

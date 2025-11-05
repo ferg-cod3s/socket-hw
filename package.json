@@ -1,0 +1,38 @@
+{
+  "name": "socket-hw",
+  "private": true,
+  "packageManager": "pnpm@10.20.0",
+  "workspaces": [
+    "cli",
+    "web",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "pnpm -r build",
+    "scanner": "pnpm -F cli run scanner",
+    "test": "pnpm -r test",
+    "lint": "eslint .",
+    "fix": "eslint . --fix && prettier --write .",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.2",
+    "@typescript-eslint/eslint-plugin": "^8.46.2",
+    "@typescript-eslint/parser": "^8.46.2",
+    "eslint": "^9.38.0",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.6",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.5"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,cts,mts}": [
+      "pnpm exec eslint --fix",
+      "pnpm exec prettier --write"
+    ],
+    "*.{json,yml,yaml,md,css,scss}": "pnpm exec prettier --write"
+  }
+}
