@@ -154,11 +154,18 @@ function parseGoMod(content: string, includeDev: boolean): Dependency[] {
 
   // Match require blocks: require ( ... )
   const requireBlockRegex = /require\s*\(([\s\S]*?)\)/g;
-  const requireLineRegex = /require\s+(\S+)\s+(\S+)/g;
 
-  // Parse require blocks
+  // Parse require blocks first
   let match;
+  const blockMatches: Array<{ start: number; end: number }> = [];
+
   while ((match = requireBlockRegex.exec(content)) !== null) {
+    // Track positions of require blocks so we can exclude them later
+    blockMatches.push({
+      start: match.index,
+      end: match.index + match[0].length,
+    });
+
     const block = match[1];
     const lines = block.split('\n');
 
@@ -191,8 +198,16 @@ function parseGoMod(content: string, includeDev: boolean): Dependency[] {
     }
   }
 
-  // Parse single-line require statements
-  while ((match = requireLineRegex.exec(content)) !== null) {
+  // Parse single-line require statements (excluding content in require blocks)
+  // Build a string with require blocks removed
+  let remainingContent = content;
+  for (let i = blockMatches.length - 1; i >= 0; i--) {
+    const { start, end } = blockMatches[i];
+    remainingContent = remainingContent.slice(0, start) + remainingContent.slice(end);
+  }
+
+  const requireLineRegex = /require\s+(\S+)\s+(\S+)/g;
+  while ((match = requireLineRegex.exec(remainingContent)) !== null) {
     const [, modulePath, version] = match;
     const cleanVersion = version.startsWith('v') ? version.slice(1) : version;
 
