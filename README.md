@@ -4,12 +4,90 @@
 
 A multi-ecosystem vulnerability scanner that auto-detects project type, ensures lockfiles, and queries OSV for security issues.
 
+### Installation
+
+#### Prerequisites
+
+- Node.js (v18 or higher)
+- pnpm (v8 or higher) - **recommended**, or npm (v9 or higher)
+
+#### Setup
+
+**Using pnpm (recommended)**:
+
+1. **Clone and install dependencies**:
+   ```bash
+   git clone <repository-url>
+   cd socket-hw
+   pnpm install
+   ```
+
+2. **Build the CLI**:
+   ```bash
+   pnpm -F cli build
+   ```
+
+3. **Install globally** (optional, for using `scanner` command anywhere):
+   ```bash
+   cd cli
+   pnpm link --global
+   ```
+
+   After linking, you can use the `scanner` command from any directory.
+
+   **Note**: If you make changes to the CLI code, rebuild with `pnpm -F cli build` for changes to take effect.
+
+**Using npm**:
+
+1. **Clone and install dependencies**:
+   ```bash
+   git clone <repository-url>
+   cd socket-hw
+   npm install
+   ```
+
+2. **Build the CLI**:
+   ```bash
+   npm run build --workspace=cli
+   ```
+
+3. **Install globally** (optional, for using `scanner` command anywhere):
+   ```bash
+   cd cli
+   npm link
+   ```
+
+   After linking, you can use the `scanner` command from any directory.
+
+   **Note**: If you make changes to the CLI code, rebuild with `npm run build --workspace=cli` for changes to take effect.
+
+#### Alternative: Use without global installation
+
+You can also run the scanner without global installation:
+
+**With pnpm**:
+```bash
+# From the repository root
+pnpm -F cli scanner
+
+# Or directly via node
+node cli/bin/scanner.js
+```
+
+**With npm**:
+```bash
+# From the repository root (requires pnpm for the root script)
+# Or navigate to cli directory and run directly:
+cd cli
+npm run scanner
+
+# Or directly via node from anywhere
+node cli/bin/scanner.js
+```
+
 ### Usage
 
 ```bash
-# Build
-pnpm -F cli build
-
 # Scan current directory
 scanner
 

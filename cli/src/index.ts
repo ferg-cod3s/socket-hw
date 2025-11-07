@@ -16,6 +16,7 @@ export type { ScanResult, ScanOptions } from "./core/scan.js";
 export function createCli(argv?: string[]) {
   const y = yargs(argv ?? hideBin(process.argv))
     .scriptName("scanner")
+    .version("0.0.1")
     .command(
       "$0 [dir]",
       "Scan dependencies for vulnerabilities",
