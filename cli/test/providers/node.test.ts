@@ -1,3 +1,25 @@
+/**
+ * Test suite for Node.js provider
+ *
+ * This file tests the Node.js/npm provider which handles:
+ * - Detection of Node.js projects (package.json presence)
+ * - Package manager detection (npm, pnpm, yarn classic/berry)
+ * - Lockfile parsing (package-lock.json, pnpm-lock.yaml, yarn.lock)
+ * - Lockfile management (create, validate, refresh)
+ * - Standalone file scanning (lockfiles without project context)
+ * - Dev dependencies filtering
+ *
+ * Testing Approach:
+ * This test suite uses mocks for file system operations rather than real files.
+ * This approach is appropriate here because:
+ * - Tests focus on detection and parsing logic in isolation
+ * - Many tests require precise control over file existence and contents
+ * - Mocking allows testing edge cases without creating complex file structures
+ *
+ * Coverage: 100%
+ * Tests: 50
+ */
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Hoist mocks before imports
@@ -32,6 +54,12 @@ describe('NodeProvider', () => {
     vi.clearAllMocks();
   });
 
+  /**
+   * Project Detection Tests
+   *
+   * Tests the provider's ability to detect Node.js projects and identify
+   * the package manager being used (npm, pnpm, yarn classic/berry).
+   */
   describe('detect', () => {
     it('returns null when package.json does not exist', () => {
       mockExistsSync.mockReturnValue(false);
@@ -76,6 +104,12 @@ describe('NodeProvider', () => {
     });
   });
 
+  /**
+   * Lockfile Management Tests
+   *
+   * Tests lockfile operations including validation and creation.
+   * This section focuses on the high-level ensureLockfile API.
+   */
   describe('ensureLockfile', () => {
     beforeEach(() => {
       mockExistsSync.mockImplementation((p: any) => {
@@ -125,6 +159,15 @@ describe('NodeProvider', () => {
     });
   });
 
+  /**
+   * Dependency Gathering Tests
+   *
+   * Tests the core functionality of extracting dependencies from:
+   * - package.json (manifest-only mode)
+   * - Lockfiles (npm, pnpm, yarn classic/berry)
+   * - Standalone lockfiles (without project context)
+   * - Transitive dependencies resolution
+   */
   describe('gatherDependencies', () => {
     it('reads dependencies from package.json', async () => {
       mockExistsSync.mockImplementation((p: any) => {
@@ -480,6 +523,18 @@ lodash@^4.17.21:
     });
   });
 
+  /**
+   * Package Manager Detection Tests
+   *
+   * Tests the logic for determining which package manager is being used.
+   * Detection sources (in priority order):
+   * 1. Lockfile presence (pnpm-lock.yaml, package-lock.json, yarn.lock, npm-shrinkwrap.json)
+   * 2. packageManager field in package.json
+   * 3. pnpm-workspace.yaml presence
+   * 4. Default to npm
+   *
+   * Also tests yarn variant detection (classic vs berry).
+   */
   describe('detectPackageManager', () => {
     it('detects pnpm from pnpm-lock.yaml', () => {
       mockExistsSync.mockImplementation((p: any) => {
@@ -622,6 +677,16 @@ lodash@^4.17.21:
     });
   });
 
+  /**
+   * Advanced Lockfile Management Tests
+   *
+   * Tests detailed lockfile operations across all package managers:
+   * - forceRefresh: Update lockfile to match package.json
+   * - forceValidate: Verify lockfile is in sync with package.json
+   * - createIfMissing: Generate lockfile if it doesn't exist
+   * - validateIfPresent: Validate only if lockfile already exists
+   * - Error handling and propagation
+   */
   describe('lockfile management', () => {
     beforeEach(() => {
       mockExecFile.mockImplementation((cmd: any, args: any, opts: any, cb?: any) => {
@@ -886,6 +951,12 @@ lodash@^4.17.21:
     });
   });
 
+  /**
+   * Manifest Enumeration Tests
+   *
+   * Tests that the provider correctly reports all supported manifest
+   * and lockfile formats.
+   */
   describe('getSupportedManifests', () => {
     it('returns list of supported manifest files', () => {
       const manifests = provider.getSupportedManifests();
