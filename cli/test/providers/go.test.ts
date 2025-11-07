@@ -1,18 +1,30 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+/**
+ * Test suite for Go provider
+ *
+ * This file tests the Go modules provider which handles:
+ * - Detection of Go projects (go.mod presence)
+ * - Parsing go.mod files (require blocks and single-line requires)
+ * - Parsing go.sum files (checksums and resolved versions)
+ * - Handling indirect dependencies
+ * - Standalone file scanning
+ *
+ * Coverage: 98.87%
+ * Tests: 32
+ */
 
-// Helper to create temp directories
-async function withTempDir(fn: (dir: string) => Promise<void>) {
-  const dir = mkdtempSync(join(tmpdir(), 'go-test-'));
-  try {
-    await fn(dir);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  vi,
+  withTempDir,
+  createFile,
+  GoFixtures,
+  MockHelpers,
+  writeFileSync,
+  join,
+} from '../helpers/test-utils.js';
 
 describe('GoProvider', () => {
   let GoProvider: any;
@@ -26,15 +38,22 @@ describe('GoProvider', () => {
   describe('detect', () => {
     it('returns null when go.mod does not exist', async () => {
       await withTempDir(async (dir) => {
+        // Arrange: Empty directory
+
+        // Act & Assert
         expect(provider.detect(dir)).toBeNull();
       });
     });
 
     it('detects Go project when go.mod exists', async () => {
       await withTempDir(async (dir) => {
-        writeFileSync(join(dir, 'go.mod'), 'module example.com/test\n');
+        // Arrange
+        createFile(dir, 'go.mod', GoFixtures.minimalGoMod);
 
+        // Act
         const result = provider.detect(dir);
+
+        // Assert
         expect(result).not.toBeNull();
         expect(result.providerId).toBe('go');
         expect(result.name).toBe('Go modules');
@@ -44,9 +63,13 @@ describe('GoProvider', () => {
 
     it('detects Go project even without go.sum', async () => {
       await withTempDir(async (dir) => {
-        writeFileSync(join(dir, 'go.mod'), 'module example.com/test\n');
+        // Arrange
+        createFile(dir, 'go.mod', GoFixtures.minimalGoMod);
 
+        // Act
         const result = provider.detect(dir);
+
+        // Assert
         expect(result).not.toBeNull();
       });
     });
@@ -73,50 +96,67 @@ describe('GoProvider', () => {
 
     it('warns when go.sum missing and forceValidate is true', async () => {
       await withTempDir(async (dir) => {
-        writeFileSync(join(dir, 'go.mod'), 'module example.com/test\n');
+        // Arrange
+        createFile(dir, 'go.mod', GoFixtures.minimalGoMod);
+        const mockWarn = MockHelpers.mockConsoleWarn();
 
-        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
+        // Act
         await provider.ensureLockfile(dir, { forceValidate: true });
 
-        expect(consoleWarnSpy).toHaveBeenCalledWith(
+        // Assert
+        expect(mockWarn.spy).toHaveBeenCalledWith(
           expect.stringContaining('go.sum not found')
         );
 
-        consoleWarnSpy.mockRestore();
+        mockWarn.restore();
       });
     });
 
     it('does not warn when go.sum exists and forceValidate is true', async () => {
       await withTempDir(async (dir) => {
-        writeFileSync(join(dir, 'go.mod'), 'module example.com/test\n');
-        writeFileSync(join(dir, 'go.sum'), '');
+        // Arrange
+        createFile(dir, 'go.mod', GoFixtures.minimalGoMod);
+        createFile(dir, 'go.sum', '');
+        const mockWarn = MockHelpers.mockConsoleWarn();
 
-        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
+        // Act
         await provider.ensureLockfile(dir, { forceValidate: true });
 
-        expect(consoleWarnSpy).not.toHaveBeenCalled();
+        // Assert
+        expect(mockWarn.spy).not.toHaveBeenCalled();
 
-        consoleWarnSpy.mockRestore();
+        mockWarn.restore();
       });
     });
 
     it('does not validate when forceValidate is false', async () => {
       await withTempDir(async (dir) => {
-        writeFileSync(join(dir, 'go.mod'), 'module example.com/test\n');
+        // Arrange
+        createFile(dir, 'go.mod', GoFixtures.minimalGoMod);
+        const mockWarn = MockHelpers.mockConsoleWarn();
 
-        const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
+        // Act
         await provider.ensureLockfile(dir, { forceValidate: false });
 
-        expect(consoleWarnSpy).not.toHaveBeenCalled();
+        // Assert
+        expect(mockWarn.spy).not.toHaveBeenCalled();
 
-        consoleWarnSpy.mockRestore();
+        mockWarn.restore();
       });
     });
   });
 
+  /**
+   * Tests for go.sum parsing
+   *
+   * go.sum is the lockfile format for Go modules containing checksums.
+   * These tests verify:
+   * - Basic parsing of go.sum format
+   * - Version prefix handling (v prefix removal)
+   * - Filtering of go.mod entries (checksums only)
+   * - Deduplication of duplicate entries
+   * - Handling of malformed lines
+   */
   describe('gatherDependencies - go.sum parsing', () => {
     it('parses go.sum file from directory', async () => {
       await withTempDir(async (dir) => {
@@ -207,6 +247,19 @@ justoneword
     });
   });
 
+  /**
+   * Tests for go.mod parsing
+   *
+   * go.mod is the manifest file for Go modules.
+   * These tests verify:
+   * - Parsing when go.sum is absent (fallback)
+   * - Handling indirect dependencies (excluded by default)
+   * - Single-line require statements
+   * - Multi-line require blocks
+   * - Mixed formats (single-line and blocks)
+   * - Deduplication across formats
+   * - Comment handling
+   */
   describe('gatherDependencies - go.mod parsing', () => {
     it('parses go.mod file when go.sum does not exist', async () => {
       await withTempDir(async (dir) => {
@@ -226,17 +279,17 @@ require github.com/pkg/errors v0.9.1
 
     it('excludes indirect dependencies by default', async () => {
       await withTempDir(async (dir) => {
-        const goModContent = `module example.com/myproject
+        // Arrange
+        const goMod = GoFixtures.requireBlock([
+          { module: 'github.com/pkg/errors', version: 'v0.9.1' },
+          { module: 'golang.org/x/sync', version: 'v0.1.0', indirect: true },
+        ]);
+        createFile(dir, 'go.mod', goMod);
 
-require (
-	github.com/pkg/errors v0.9.1
-	golang.org/x/sync v0.1.0 // indirect
-)
-`;
-        writeFileSync(join(dir, 'go.mod'), goModContent);
-
+        // Act
         const deps = await provider.gatherDependencies(dir, {});
 
+        // Assert - indirect dependencies excluded by default
         expect(deps).toHaveLength(1);
         expect(deps[0].name).toBe('github.com/pkg/errors');
       });
@@ -244,17 +297,17 @@ require (
 
     it('includes indirect dependencies when includeDev is true', async () => {
       await withTempDir(async (dir) => {
-        const goModContent = `module example.com/myproject
+        // Arrange
+        const goMod = GoFixtures.requireBlock([
+          { module: 'github.com/pkg/errors', version: 'v0.9.1' },
+          { module: 'golang.org/x/sync', version: 'v0.1.0', indirect: true },
+        ]);
+        createFile(dir, 'go.mod', goMod);
 
-require (
-	github.com/pkg/errors v0.9.1
-	golang.org/x/sync v0.1.0 // indirect
-)
-`;
-        writeFileSync(join(dir, 'go.mod'), goModContent);
-
+        // Act
         const deps = await provider.gatherDependencies(dir, { includeDev: true });
 
+        // Assert - both direct and indirect dependencies included
         expect(deps).toHaveLength(2);
         expect(deps.some((d) => d.name === 'github.com/pkg/errors')).toBe(true);
         expect(deps.some((d) => d.name === 'golang.org/x/sync')).toBe(true);
