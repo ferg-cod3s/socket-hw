@@ -4,18 +4,25 @@ import { useState } from 'react';
 import { FileUpload } from '@/components/FileUpload';
 import { ScanResults } from '@/components/ScanResults';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { useProgressTracking } from '@/hooks/useProgressTracking';
 import type { ScanResult } from '@/lib/scanner';
+import type { ProgressUpdate } from '@/types';
 
 export default function Home() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [fileName, setFileName] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+
+  // Hook will return null for progress if jobId is null, and will track progress when jobId is set
+  const { progress } = useProgressTracking(jobId);
 
   const handleUpload = async (fileOrFiles: File | FileList) => {
     setIsScanning(true);
     setError(null);
     setScanResult(null); // Clear previous results
+    setJobId(null); // Reset job ID
 
     try {
       const formData = new FormData();
@@ -56,11 +63,95 @@ export default function Home() {
       }
 
       const data = await response.json();
-      setScanResult(data.results);
+      // Set the jobId to start progress tracking via SSE
+      setJobId(data.jobId);
+
+      // Poll for results
+      pollForResults(data.jobId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Scan failed');
       console.error('Scan error:', err);
-    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  /**
+   * Poll the job endpoint for results
+   */
+  const pollForResults = async (jobId: string) => {
+    const maxAttempts = 600; // 5 minutes with 500ms interval
+    let attempts = 0;
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/scan/job?jobId=${encodeURIComponent(jobId)}`);
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch job status');
+        }
+
+        const jobData = await response.json();
+
+        if (jobData.status === 'completed') {
+          setScanResult(jobData.result);
+          setIsScanning(false);
+        } else if (jobData.status === 'failed') {
+          setError(`Scan failed: ${jobData.error}`);
+          setIsScanning(false);
+        } else if (attempts < maxAttempts) {
+          // Still processing, poll again
+          attempts++;
+          setTimeout(poll, 500);
+        } else {
+          // Timeout
+          setError('Scan timed out. Please try again.');
+          setIsScanning(false);
+        }
+      } catch (err) {
+        console.error('Error polling for results:', err);
+        if (attempts < maxAttempts) {
+          attempts++;
+          setTimeout(poll, 500);
+        } else {
+          setError('Failed to get scan results. Please try again.');
+          setIsScanning(false);
+        }
+      }
+    };
+
+    poll();
+  };
+
+  const handlePathSubmit = async (path: string) => {
+    setIsScanning(true);
+    setError(null);
+    setScanResult(null); // Clear previous results
+    setJobId(null); // Reset job ID
+
+    try {
+      setFileName(path);
+      const formData = new FormData();
+      formData.append('path', path);
+
+      const response = await fetch('/api/scan', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || errorData.error || 'Scan failed');
+      }
+
+      const data = await response.json();
+      // Set the jobId to start progress tracking via SSE
+      setJobId(data.jobId);
+
+      // Poll for results
+      pollForResults(data.jobId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Scan failed');
+      console.error('Scan error:', err);
       setIsScanning(false);
     }
   };
@@ -69,6 +160,7 @@ export default function Home() {
     setScanResult(null);
     setFileName('');
     setError(null);
+    setJobId(null);
   };
 
   return (
@@ -91,11 +183,11 @@ export default function Home() {
         <main className="flex flex-col items-center gap-8">
           {/* File Upload (only show when not scanning and no results) */}
           {!scanResult && !isScanning && (
-            <FileUpload onUpload={handleUpload} isScanning={isScanning} />
+            <FileUpload onUpload={handleUpload} onPathSubmit={handlePathSubmit} isScanning={isScanning} />
           )}
 
           {/* Loading State */}
-          {isScanning && <LoadingSpinner fileName={fileName} />}
+          {isScanning && <LoadingSpinner fileName={fileName} progress={progress || undefined} />}
 
           {/* Error State */}
           {error && !isScanning && (

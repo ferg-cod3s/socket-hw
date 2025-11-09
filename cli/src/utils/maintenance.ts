@@ -61,7 +61,7 @@ async function checkNpmMaintenance(
     const releaseDates = Object.entries(versions)
       .filter(([key]) => key !== 'created' && key !== 'modified' && !key.startsWith('unpublished'))
       .map(([, date]) => new Date(date as string))
-      .sort((a, b) => b.getTime() - a.getTime()); // Most recent first
+      .toSorted((a, b) => b.getTime() - a.getTime()); // Most recent first
 
     if (releaseDates.length === 0) {
       return {
@@ -152,7 +152,7 @@ async function checkPypiMaintenance(
     const releaseDates = Object.values(releases)
       .flat()
       .map((release: any) => new Date(release.upload_time_iso_8601))
-      .sort((a: Date, b: Date) => b.getTime() - a.getTime()); // Most recent first
+      .toSorted((a: Date, b: Date) => b.getTime() - a.getTime()); // Most recent first
 
     if (releaseDates.length === 0) {
       return {

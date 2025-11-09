@@ -191,6 +191,51 @@ describe('output/console', () => {
       expect(allCalls).toContain('CRITICAL');
     });
 
+    it('displays summary title and advisory ID separately when summary differs', () => {
+      const deps: Dependency[] = [
+        { name: 'lodash', version: '4.17.20', ecosystem: 'npm', dev: false },
+      ];
+
+      const vulns: Record<string, UnifiedAdvisory[]> = {
+        lodash: [
+          {
+            id: 'GHSA-aaaa-bbbb-cccc',
+            source: 'ghsa',
+            severity: 'HIGH',
+            summary: 'Remote code execution vulnerability',
+          },
+        ],
+      };
+
+      formatConsoleOutput(deps, vulns, 1000);
+
+      const allCalls = consoleLogSpy.mock.calls.map((call: any) => call[0]).join('\n');
+      expect(allCalls).toContain('Remote code execution vulnerability');
+      expect(allCalls).toContain('Advisory ID: GHSA-aaaa-bbbb-cccc');
+    });
+
+    it('falls back to advisory ID as title when summary missing', () => {
+      const deps: Dependency[] = [
+        { name: 'lodash', version: '4.17.20', ecosystem: 'npm', dev: false },
+      ];
+
+      const vulns: Record<string, UnifiedAdvisory[]> = {
+        lodash: [
+          {
+            id: 'GHSA-dddd-eeee-ffff',
+            source: 'ghsa',
+            severity: 'HIGH',
+          },
+        ],
+      };
+
+      formatConsoleOutput(deps, vulns, 1000);
+
+      const allCalls = consoleLogSpy.mock.calls.map((call: any) => call[0]).join('\n');
+      expect(allCalls).toContain('GHSA-dddd-eeee-ffff');
+      expect(allCalls).not.toContain('Advisory ID: GHSA-dddd-eeee-ffff');
+    });
+
     it('displays OSV source label', () => {
       const deps: Dependency[] = [
         { name: 'lodash', version: '4.17.20', ecosystem: 'npm', dev: false },
@@ -281,7 +326,7 @@ describe('output/console', () => {
       expect(allCalls).not.toContain('CVE IDs:');
     });
 
-    it('displays vulnerability description', () => {
+    it('displays vulnerability summary as title and description', () => {
       const deps: Dependency[] = [
         { name: 'lodash', version: '4.17.20', ecosystem: 'npm', dev: false },
       ];
@@ -292,7 +337,7 @@ describe('output/console', () => {
             id: 'CVE-2021-123',
             source: 'osv',
             severity: 'HIGH',
-            summary: 'Test',
+            summary: 'Test summary',
             details: 'This is a detailed description of the vulnerability.',
           },
         ],
@@ -301,7 +346,30 @@ describe('output/console', () => {
       formatConsoleOutput(deps, vulns, 1000);
 
       const allCalls = consoleLogSpy.mock.calls.map((call: any) => call[0]).join('\n');
+      expect(allCalls).toContain('Title: Test summary');
       expect(allCalls).toContain('Description: This is a detailed description');
+    });
+
+    it('falls back to advisory id when summary missing', () => {
+      const deps: Dependency[] = [
+        { name: 'lodash', version: '4.17.20', ecosystem: 'npm', dev: false },
+      ];
+
+      const vulns: Record<string, UnifiedAdvisory[]> = {
+        lodash: [
+          {
+            id: 'CVE-2021-456',
+            source: 'osv',
+            severity: 'MEDIUM',
+            details: 'Fallback description',
+          },
+        ],
+      };
+
+      formatConsoleOutput(deps, vulns, 1000);
+
+      const allCalls = consoleLogSpy.mock.calls.map((call: any) => call[0]).join('\n');
+      expect(allCalls).toContain('Title: CVE-2021-456');
     });
 
     it('truncates long descriptions to 200 characters', () => {

@@ -915,4 +915,289 @@ describe('core/scan - comprehensive tests', () => {
       });
     });
   });
+
+  describe('Multi-source vulnerability handling', () => {
+    it('labels GHSA advisories from OSV with GHSA source', async () => {
+      await withTempDir(async (dir) => {
+        writeFileSync(
+          join(dir, 'package.json'),
+          JSON.stringify({
+            name: 'test',
+            version: '1.0.0',
+            dependencies: { vite: '6.2.3' },
+          }),
+          'utf8'
+        );
+
+        // OSV returns GHSA IDs (cross-referenced vulnerabilities)
+        vi.mocked(osv.queryOsvBatch).mockResolvedValueOnce({
+          results: [
+            {
+              vulns: [
+                {
+                  id: 'GHSA-356w-63v5-8wf4',
+                  summary: 'Test GHSA via OSV',
+                  modified: '2021-01-01T00:00:00Z',
+                  severity: [{ type: 'CVSS_V3', score: '7.5' }],
+                  affected: [
+                    {
+                      package: { ecosystem: 'npm', name: 'vite' },
+                      ranges: [
+                        {
+                          type: 'SEMVER',
+                          events: [{ introduced: '0' }, { fixed: '6.2.4' }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
+
+        vi.mocked(ghsa.queryGhsa).mockResolvedValueOnce([]);
+
+        const result = await scanPath(dir, { concurrency: 1 });
+
+        // Advisory should be labeled as GHSA since it has a GHSA ID
+        expect(result.advisoriesByPackage.vite).toHaveLength(1);
+        expect(result.advisoriesByPackage.vite[0].id).toBe('GHSA-356w-63v5-8wf4');
+        expect(result.advisoriesByPackage.vite[0].source).toBe('ghsa');
+      });
+    });
+
+    it('correctly identifies duplicate GHSA advisories from both OSV and GHSA', async () => {
+      await withTempDir(async (dir) => {
+        writeFileSync(
+          join(dir, 'package.json'),
+          JSON.stringify({
+            name: 'test',
+            version: '1.0.0',
+            dependencies: { lodash: '4.17.20' },
+          }),
+          'utf8'
+        );
+
+        const ghsaId = 'GHSA-xxxx-yyyy-zzzz';
+
+        // OSV returns the GHSA advisory (with GHSA ID)
+        vi.mocked(osv.queryOsvBatch).mockResolvedValueOnce({
+          results: [
+            {
+              vulns: [
+                {
+                  id: ghsaId,
+                  summary: 'Vulnerability via OSV',
+                  modified: '2021-01-01T00:00:00Z',
+                  severity: [{ type: 'CVSS_V3', score: '5.0' }],  // MEDIUM
+                  affected: [
+                    {
+                      package: { ecosystem: 'npm', name: 'lodash' },
+                      ranges: [
+                        {
+                          type: 'SEMVER',
+                          events: [{ introduced: '0' }, { fixed: '4.17.21' }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
+
+        // GHSA also returns the same advisory with higher severity
+        vi.mocked(ghsa.queryGhsa).mockResolvedValueOnce([
+          {
+            id: ghsaId,
+            summary: 'Vulnerability from GHSA',
+            severity: 'CRITICAL',  // Higher than OSV's MEDIUM
+            publishedAt: '2021-01-01T00:00:00Z',
+            updatedAt: '2021-01-01T00:00:00Z',
+            vulnerabilities: [
+              {
+                package: { name: 'lodash', ecosystem: 'NPM' },
+                vulnerableVersionRange: '< 4.17.21',
+              },
+            ],
+            references: [],
+          },
+        ]);
+
+        const result = await scanPath(dir, { concurrency: 1 });
+
+        // Both sources return same GHSA ID, so dedup tracks both sources
+        // Result: single advisory with both sources listed and highest severity
+        expect(result.advisoriesByPackage.lodash).toHaveLength(1);
+        const advisory = result.advisoriesByPackage.lodash[0];
+        // Both report the same source 'ghsa' since ID starts with GHSA-
+        expect(advisory.source).toBe('ghsa');
+        // But severity should be updated to CRITICAL (higher)
+        expect(advisory.severity).toBe('CRITICAL');
+      });
+    });
+
+    it('uses higher severity when same advisory from multiple sources', async () => {
+      await withTempDir(async (dir) => {
+        writeFileSync(
+          join(dir, 'package.json'),
+          JSON.stringify({
+            name: 'test',
+            version: '1.0.0',
+            dependencies: { lodash: '4.17.20' },
+          }),
+          'utf8'
+        );
+
+        const osvVulnId = 'OSV-2021-987';
+
+        // OSV reports as MEDIUM
+        vi.mocked(osv.queryOsvBatch).mockResolvedValueOnce({
+          results: [
+            {
+              vulns: [
+                {
+                  id: osvVulnId,
+                  summary: 'Vulnerability',
+                  modified: '2021-01-01T00:00:00Z',
+                  severity: [{ type: 'CVSS_V3', score: '5.0' }],  // MEDIUM
+                  affected: [
+                    {
+                      package: { ecosystem: 'npm', name: 'lodash' },
+                      ranges: [
+                        {
+                          type: 'SEMVER',
+                          events: [{ introduced: '0' }, { fixed: '4.17.21' }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  id: 'GHSA-9999-8888-7777',  // Second advisory from OSV
+                  summary: 'Another vulnerability',
+                  modified: '2021-01-01T00:00:00Z',
+                  severity: [{ type: 'CVSS_V3', score: '5.0' }],  // MEDIUM
+                  affected: [
+                    {
+                      package: { ecosystem: 'npm', name: 'lodash' },
+                      ranges: [
+                        {
+                          type: 'SEMVER',
+                          events: [{ introduced: '0' }, { fixed: '4.17.21' }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
+
+        // GHSA reports second advisory as CRITICAL (higher severity than OSV's MEDIUM)
+        vi.mocked(ghsa.queryGhsa).mockResolvedValueOnce([
+          {
+            id: 'GHSA-9999-8888-7777',
+            summary: 'Another vulnerability from GHSA',
+            severity: 'CRITICAL',  // Higher than OSV's MEDIUM
+            publishedAt: '2021-01-01T00:00:00Z',
+            updatedAt: '2021-01-01T00:00:00Z',
+            vulnerabilities: [
+              {
+                package: { name: 'lodash', ecosystem: 'NPM' },
+                vulnerableVersionRange: '< 4.17.21',
+              },
+            ],
+            references: [],
+          },
+        ]);
+
+        const result = await scanPath(dir, { concurrency: 1 });
+
+        // Should have 2 advisories total
+        expect(result.advisoriesByPackage.lodash).toHaveLength(2);
+
+        // Find the GHSA advisory that was in both sources
+        const ghsaAdvisory = result.advisoriesByPackage.lodash.find(a => a.id === 'GHSA-9999-8888-7777');
+        expect(ghsaAdvisory).toBeDefined();
+        expect(ghsaAdvisory!.severity).toBe('CRITICAL');  // Should use higher severity
+      });
+    });
+
+    it('prefers GHSA details over OSV when merging sources', async () => {
+      await withTempDir(async (dir) => {
+        writeFileSync(
+          join(dir, 'package.json'),
+          JSON.stringify({
+            name: 'test',
+            version: '1.0.0',
+            dependencies: { lodash: '4.17.20' },
+          }),
+          'utf8'
+        );
+
+        const ghsaId = 'GHSA-xxxx-yyyy-zzzz';
+
+        // OSV has minimal details but includes severity
+        vi.mocked(osv.queryOsvBatch).mockResolvedValueOnce({
+          results: [
+            {
+              vulns: [
+                {
+                  id: ghsaId,
+                  summary: 'Brief summary',
+                  modified: '2021-01-01T00:00:00Z',
+                  severity: [{ type: 'CVSS_V3', score: '7.5' }],
+                  affected: [
+                    {
+                      package: { ecosystem: 'npm', name: 'lodash' },
+                      ranges: [
+                        {
+                          type: 'SEMVER',
+                          events: [{ introduced: '0' }, { fixed: '4.17.21' }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
+
+        // GHSA has more details
+        vi.mocked(ghsa.queryGhsa).mockResolvedValueOnce([
+          {
+            id: ghsaId,
+            summary: 'Detailed summary from GHSA',
+            description: 'Long detailed description',
+            severity: 'HIGH',
+            publishedAt: '2021-01-01T00:00:00Z',
+            updatedAt: '2021-01-01T00:00:00Z',
+            vulnerabilities: [
+              {
+                package: { name: 'lodash', ecosystem: 'NPM' },
+                vulnerableVersionRange: '< 4.17.21',
+                firstPatchedVersion: { identifier: '4.17.21' },
+              },
+            ],
+            references: [{ url: 'https://ghsa.example.com' }],
+          },
+        ]);
+
+        const result = await scanPath(dir, { concurrency: 1 });
+
+        // Since OSV returns a GHSA ID, it's labeled as GHSA source
+        // When GHSA also returns it (with GHSA source), both are 'ghsa'
+        // So dedup doesn't add a second source, but GHSA's severity still updates it
+        expect(result.advisoriesByPackage.lodash).toHaveLength(1);
+        const advisory = result.advisoriesByPackage.lodash[0];
+        expect(advisory.source).toBe('ghsa');
+        expect(advisory.severity).toBe('HIGH');
+      });
+    });
+  });
 });

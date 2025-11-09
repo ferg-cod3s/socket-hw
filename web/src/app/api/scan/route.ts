@@ -1,14 +1,20 @@
 /**
  * API Route: POST /api/scan
- * Handles lockfile upload and vulnerability scanning
+ * Handles both lockfile upload and local filesystem path scanning
+ * Returns immediately with a jobId for async processing
+ * Progress tracked via /api/scan/progress?jobId=xyz
+ * Results available via /api/scan/job?jobId=xyz after completion
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, unlink, mkdir, rm } from 'fs/promises';
-import { join, dirname } from 'path';
-import { tmpdir } from 'os';
-import { randomBytes } from 'crypto';
-import { scanPath } from '@/lib/scanner';
+import { stat } from 'fs/promises';
+import { resolve } from 'path';
+import {
+  createScanJob,
+  processScanFile,
+  processScanPath,
+  processScanDirectory,
+} from '@/lib/scanJobQueue';
 import { getSupportedFilenames } from '@cli/index';
 
 export const runtime = 'nodejs';
@@ -17,18 +23,64 @@ export const dynamic = 'force-dynamic';
 // Get allowed files from provider system
 const ALLOWED_FILES = Array.from(getSupportedFilenames());
 
-// Max file size: 10MB
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+// Max file size: 50MB (increased to handle large projects)
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
 
 export async function POST(request: NextRequest) {
-  let tempPath: string | null = null;
-  let isDirectory = false;
+  // Create a new scan job (returns immediately)
+  const jobId = createScanJob();
 
   try {
-    // 1. Parse multipart form data
+    // Parse multipart form data
     const formData = await request.formData();
 
-    // Get all files from the form data
+    // Check for path-based scanning first
+    const scanPathParam = formData.get('path');
+    if (scanPathParam && typeof scanPathParam === 'string') {
+      // Resolve the path (handles ~, relative paths, etc.)
+      const resolvedPath = resolve(
+        scanPathParam.replace('~', process.env.HOME || '/root')
+      );
+
+      // Validate path exists and is accessible
+      try {
+        await stat(resolvedPath);
+      } catch (error) {
+        const fsError = error as NodeJS.ErrnoException;
+        if (fsError.code === 'ENOENT') {
+          return NextResponse.json(
+            {
+              error: 'Path not found',
+              message: `The path "${scanPathParam}" does not exist. Please check the path and try again.`,
+            },
+            { status: 400 }
+          );
+        } else if (fsError.code === 'EACCES') {
+          return NextResponse.json(
+            {
+              error: 'Access denied',
+              message: `Permission denied accessing "${scanPathParam}". Check file permissions.`,
+            },
+            { status: 403 }
+          );
+        }
+        throw error;
+      }
+
+      // Start async scan in background
+      processScanPath(jobId, scanPathParam, resolvedPath).catch((err) => {
+        console.error(`[API] Background scan failed for job ${jobId}:`, err);
+      });
+
+      // Return immediately with jobId
+      return NextResponse.json({
+        jobId,
+        message: 'Scan queued. Track progress with this jobId.',
+      });
+    }
+
+    // Get all files from the form data (file upload mode)
     const files: File[] = [];
     for (const [key, value] of formData.entries()) {
       if (key === 'lockfile' && value instanceof File) {
@@ -38,154 +90,86 @@ export async function POST(request: NextRequest) {
 
     if (files.length === 0) {
       return NextResponse.json(
-        { error: 'No file provided', message: 'Please upload a lockfile or folder' },
+        {
+          error: 'No input provided',
+          message: 'Please upload files/folder or provide a path',
+        },
         { status: 400 }
       );
     }
 
     // Check if this is a directory upload (multiple files with webkitRelativePath)
     const firstFile = files[0] as { webkitRelativePath?: string };
-    const hasRelativePath = firstFile.webkitRelativePath && firstFile.webkitRelativePath.length > 0;
-    isDirectory = Boolean(files.length > 1 || hasRelativePath);
-
+    const hasRelativePath =
+      firstFile.webkitRelativePath &&
+      firstFile.webkitRelativePath.length > 0;
+    const isDirectory = Boolean(files.length > 1 || hasRelativePath);
 
     if (isDirectory) {
-      // Handle directory upload
-      const tempDirName = `scan-${randomBytes(16).toString('hex')}`;
-      tempPath = join(tmpdir(), tempDirName);
-
-      await mkdir(tempPath, { recursive: true });
-
-      // Write all files maintaining directory structure
-      let uploadedFolderName: string | null = null;
-      for (const file of files) {
-        const relativePath = (file as any).webkitRelativePath || file.name;
-
-        // Extract the root folder name from the first file
-        if (!uploadedFolderName && relativePath.includes('/')) {
-          uploadedFolderName = relativePath.split('/')[0];
-        }
-
-        const filePath = join(tempPath, relativePath);
-
-        // Create parent directories if needed
-        const fileDir = dirname(filePath);
-        await mkdir(fileDir, { recursive: true });
-
-        const bytes = await file.arrayBuffer();
-        const buffer = Buffer.from(bytes);
-        await writeFile(filePath, buffer);
-      }
-
-      // Determine the actual directory to scan
-      // If files were uploaded with a root folder, scan that folder
-      // Otherwise scan the temp directory root
-      const scanDir = uploadedFolderName
-        ? join(tempPath, uploadedFolderName)
-        : tempPath;
-
-      // Run scan on the directory
-      const startTime = Date.now();
-      const result = await scanPath(scanDir, {
-        includeDev: true,
-        validateLock: false
+      // Start async directory scan in background
+      processScanDirectory(jobId, files).catch((err) => {
+        console.error(`[API] Background directory scan failed for job ${jobId}:`, err);
       });
-      const scanDuration = Date.now() - startTime;
 
-      // Clean up temp directory
-      await rm(tempPath, { recursive: true, force: true });
-      tempPath = null;
-
-      // Return results
+      // Return immediately with jobId
       return NextResponse.json({
-        success: true,
-        isDirectory: true,
+        jobId,
         fileCount: files.length,
-        scanDuration,
-        results: result
+        message: 'Directory scan queued. Track progress with this jobId.',
       });
-
     } else {
-      // Handle single file upload
+      // Single file upload
       const file = files[0];
 
-      // 2. Validate file type using provider system
+      // Validate file type using provider system
       if (!ALLOWED_FILES.includes(file.name)) {
         return NextResponse.json(
           {
             error: 'Unsupported file type',
-            message: `File type '${file.name}' is not supported. Supported files: ${ALLOWED_FILES.join(', ')}`
+            message: `File type '${file.name}' is not supported. Supported files: ${ALLOWED_FILES.join(
+              ', '
+            )}`,
           },
           { status: 400 }
         );
       }
 
-      // 3. Validate file size
+      // Validate file size
       if (file.size > MAX_FILE_SIZE) {
         return NextResponse.json(
           {
             error: 'File too large',
-            message: `File size ${(file.size / 1024 / 1024).toFixed(2)}MB exceeds maximum of ${MAX_FILE_SIZE / 1024 / 1024}MB`
+            message: `File size ${(file.size / 1024 / 1024).toFixed(
+              2
+            )}MB exceeds maximum of ${MAX_FILE_SIZE / 1024 / 1024}MB`,
           },
           { status: 400 }
         );
       }
 
-      // 4. Save file to temp directory
-      const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-
-      const tempFileName = `${randomBytes(16).toString('hex')}-${file.name}`;
-      tempPath = join(tmpdir(), tempFileName);
-
-      await writeFile(tempPath, buffer);
-
-      // 5. Run scan
-      const startTime = Date.now();
-      const result = await scanPath(tempPath, {
-        includeDev: true,
-        validateLock: false
+      // Start async file scan in background
+      processScanFile(jobId, file).catch((err) => {
+        console.error(`[API] Background file scan failed for job ${jobId}:`, err);
       });
-      const scanDuration = Date.now() - startTime;
 
-      // 6. Clean up temp file
-      await unlink(tempPath);
-      tempPath = null;
-
-      // 7. Return results
+      // Return immediately with jobId
       return NextResponse.json({
-        success: true,
-        isDirectory: false,
+        jobId,
         fileName: file.name,
         fileSize: file.size,
-        scanDuration,
-        results: result
+        message: 'Scan queued. Track progress with this jobId.',
       });
     }
-
   } catch (error) {
-    // Clean up temp path on error
-    if (tempPath) {
-      if (isDirectory) {
-        await rm(tempPath, { recursive: true, force: true }).catch((err) => {
-          console.error('[API] Failed to clean up temp directory:', err);
-        });
-      } else {
-        await unlink(tempPath).catch((err) => {
-          console.error('[API] Failed to clean up temp file:', err);
-        });
-      }
-    }
+    console.error('[API] Request parsing error:', error);
 
-    console.error('[API] Scan error:', error);
-
-    // Return error response
     return NextResponse.json(
       {
-        error: 'Scan failed',
-        message: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: 'Failed to process request',
+        message:
+          error instanceof Error ? error.message : 'Unknown error occurred',
       },
-      { status: 500 }
+      { status: 400 }
     );
   }
 }

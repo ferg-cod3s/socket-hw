@@ -13,13 +13,16 @@ export interface RetryOptions {
   maxTimeout?: number;
   /** Request timeout in milliseconds (default: 30000) */
   timeout?: number;
+  /** Whether to use exponential backoff (default: true) */
+  exponentialBackoff?: boolean;
 }
 
-const DEFAULT_OPTIONS: Required<RetryOptions> = {
+const DEFAULT_OPTIONS: Required<RetryOptions & { exponentialBackoff: boolean }> = {
   retries: 3,
   minTimeout: 1000,
   maxTimeout: 30000,
   timeout: 30000,
+  exponentialBackoff: true,
 };
 
 /**
@@ -105,6 +108,7 @@ export async function fetchWithRetry(
             const error = new Error(`HTTP ${status}: ${response.statusText}`);
             (error as any).status = status;
             (error as any).retryDelay = retryDelay;
+            (error as any).isRateLimit = status === 429;
             throw error;
           } else {
             // Non-retryable error - throw AbortError to stop retries
@@ -136,12 +140,35 @@ export async function fetchWithRetry(
       onFailedAttempt: (context: RetryContext) => {
         // Log retry attempts for debugging
         const errorMessage = context.error instanceof Error ? context.error.message : String(context.error);
+        const isRateLimit = (context.error as any).isRateLimit;
         logger.warn(
-          { attempt: context.attemptNumber, total: context.attemptNumber + context.retriesLeft },
+          {
+            attempt: context.attemptNumber,
+            total: context.attemptNumber + context.retriesLeft,
+            isRateLimit,
+          },
           `API request failed: ${errorMessage}`
         );
       },
     }
   );
+}
+
+/**
+ * Check if a JSON response body contains GraphQL rate limit errors
+ */
+export function isGraphQLRateLimitError(data: any): boolean {
+  if (!data || typeof data !== 'object') return false;
+
+  if (Array.isArray(data.errors)) {
+    return data.errors.some((error: any) =>
+      error?.extensions?.code === 'RATE_LIMITED' ||
+      error?.type === 'RATE_LIMIT' ||
+      error?.message?.includes('rate limit') ||
+      error?.message?.includes('Rate limit')
+    );
+  }
+
+  return false;
 }
 

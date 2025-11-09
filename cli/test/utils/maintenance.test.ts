@@ -624,4 +624,77 @@ describe('utils/maintenance', () => {
       expect(result.error).toBe('No release dates found');
     });
   });
+
+  describe('ES2023 .toSorted() feature', () => {
+    it('uses toSorted instead of sort for immutability', async () => {
+      const recentDate = new Date();
+      recentDate.setDate(recentDate.getDate() - 30);
+
+      const olderDate = new Date();
+      olderDate.setDate(olderDate.getDate() - 100);
+
+      vi.mocked(retry.fetchWithRetry).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          time: {
+            created: '2020-01-01T00:00:00Z',
+            '1.0.0': olderDate.toISOString(),
+            '2.0.0': recentDate.toISOString(),
+            '1.5.0': new Date(Date.now() - 50 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+        }),
+      } as Response);
+
+      vi.mocked(retry.fetchWithRetry).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ downloads: 5000 }),
+      } as Response);
+
+      const result = await checkMaintenance('sorted-package', 'npm');
+
+      // Should correctly identify most recent release
+      expect(result.isUnmaintained).toBe(false);
+      expect(result.lastReleaseDate).toBe(recentDate.toISOString());
+    });
+
+    it('correctly orders multiple releases using toSorted', async () => {
+      // Create dates with the most recent being 30 days ago
+      const recentDate = new Date();
+      recentDate.setDate(recentDate.getDate() - 30);
+
+      const dates = [
+        new Date(2020, 0, 1),
+        new Date(2021, 6, 15),
+        new Date(2023, 11, 25),
+        new Date(2022, 3, 10),
+        recentDate,
+      ];
+
+      const timeObj = {
+        created: '2020-01-01T00:00:00Z',
+        '1.0.0': dates[0].toISOString(),
+        '2.0.0': dates[1].toISOString(),
+        '3.0.0': dates[2].toISOString(),
+        '2.5.0': dates[3].toISOString(),
+        '4.0.0': dates[4].toISOString(),
+      };
+
+      vi.mocked(retry.fetchWithRetry).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ time: timeObj }),
+      } as Response);
+
+      vi.mocked(retry.fetchWithRetry).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ downloads: 10000 }),
+      } as Response);
+
+      const result = await checkMaintenance('multi-release', 'npm');
+
+      // Should find the most recent date (30 days ago)
+      const mostRecentDate = new Date(Math.max(...dates.map((d) => d.getTime())));
+      expect(result.lastReleaseDate).toBe(mostRecentDate.toISOString());
+      expect(result.isUnmaintained).toBe(false);
+    });
+  });
 });

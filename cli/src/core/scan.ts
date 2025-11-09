@@ -3,12 +3,13 @@ import { basename, dirname, join } from 'node:path';
 import type { DetectionResult, Dependency } from '../providers/index.js';
 import { selectProvider, getSupportedFilenames } from '../providers/index.js';
 import { queryOsv, queryOsvBatch, type OsvBatchQuery, type OsvVuln } from '../api/osv.js';
-import { queryGhsa, type GhsaAdvisory } from '../api/ghsa.js';
+import { queryGhsa, type GhsaAdvisory, GhsaRateLimitError } from '../api/ghsa.js';
 import { satisfies } from 'semver';
 import { logger } from '../utils/logger.js';
 import type { UnifiedAdvisory } from '../index.js';
 import { findIgnoreConfig, loadIgnoreConfig, filterAdvisories } from '../utils/ignore.js';
 import { checkMaintenanceBatch, type MaintenanceInfo } from '../utils/maintenance.js';
+import { updateProgress } from '../utils/progress.js';
 
 export interface ScanOptions {
   includeDev?: boolean;
@@ -62,6 +63,7 @@ export async function scanPath(inputPath: string, opts: ScanOptions = {}): Promi
   }
 
   const { provider, detection } = selectProvider(dir, standaloneLockfile);
+  updateProgress('detecting-ecosystem', 10, `Detected ${detection.name} ecosystem`);
 
   // Ensure/validate lockfile per options. Default to no-ops to avoid spawning package managers in tests.
   await provider.ensureLockfile(dir, {
@@ -71,12 +73,14 @@ export async function scanPath(inputPath: string, opts: ScanOptions = {}): Promi
     validateIfPresent: false,
   });
 
+  updateProgress('gathering-dependencies', 20, 'Gathering dependencies from lockfile...');
   const deps = await provider.gatherDependencies(dir, {
     includeDev: opts.includeDev ?? false,
     standaloneLockfile,
   });
 
   if (deps.length === 0) {
+    updateProgress('scanning-packages', 100, 'No dependencies found');
     return {
       deps,
       advisoriesByPackage: {},
@@ -85,11 +89,17 @@ export async function scanPath(inputPath: string, opts: ScanOptions = {}): Promi
     };
   }
 
+  updateProgress('scanning-packages', 30, `Found ${deps.length} dependencies, scanning for vulnerabilities...`, {
+    totalDeps: deps.length,
+    depsScanned: 0,
+  });
+
   let advisoriesByPackage = await scanPackages(deps, {
     concurrency: opts.concurrency ?? 10,
   });
 
   // Apply ignore list filtering if configured
+  updateProgress('filtering-advisories', 75, 'Filtering advisories...');
   const ignoreFilePath = findIgnoreConfig(dir, opts.ignoreFile);
   if (ignoreFilePath) {
     const ignoreConfig = loadIgnoreConfig(ignoreFilePath);
@@ -101,7 +111,7 @@ export async function scanPath(inputPath: string, opts: ScanOptions = {}): Promi
   // Check maintenance status if requested
   let maintenanceInfo: Map<string, MaintenanceInfo> | undefined;
   if (opts.checkMaintenance) {
-    logger.info('Checking package maintenance status...');
+    updateProgress('finalizing', 85, 'Checking package maintenance status...');
     maintenanceInfo = await checkMaintenanceBatch(deps, opts.concurrency ?? 5);
     const unmaintainedCount = Array.from(maintenanceInfo.values()).filter(
       (info) => info.isUnmaintained
@@ -110,6 +120,8 @@ export async function scanPath(inputPath: string, opts: ScanOptions = {}): Promi
       logger.info(`Found ${unmaintainedCount} unmaintained package(s)`);
     }
   }
+
+  updateProgress('finalizing', 100, 'Scan complete');
 
   return {
     deps,
@@ -137,6 +149,15 @@ async function scanPackages(
   // Process OSV queries in batches
   for (let i = 0; i < packages.length; i += MAX_BATCH_SIZE) {
     const batch = packages.slice(i, i + MAX_BATCH_SIZE);
+    const batchNumber = Math.floor(i / MAX_BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(packages.length / MAX_BATCH_SIZE);
+    const progressPercent = 30 + Math.floor((i / packages.length) * 40); // 30-70%
+
+    updateProgress('scanning-packages', progressPercent,
+      `Scanning batch ${batchNumber}/${totalBatches} (${i}/${packages.length} packages)`, {
+        totalDeps: packages.length,
+        depsScanned: i,
+      });
 
     try {
       const batchQueries: OsvBatchQuery[] = batch.map((pkg) => ({
@@ -152,9 +173,13 @@ async function scanPackages(
         const advisories: UnifiedAdvisory[] = [];
 
         for (const vuln of result.vulns ?? []) {
+          // If OSV returns a GHSA ID, label it as GHSA (not OSV)
+          // OSV often aggregates vulnerabilities from other sources like GHSA
+          const source = vuln.id.startsWith('GHSA-') ? 'ghsa' : 'osv';
+
           advisories.push({
             id: vuln.id,
-            source: 'osv',
+            source,
             severity: getSeverity(vuln),
             summary: vuln.summary,
             details: vuln.details,
@@ -180,9 +205,13 @@ async function scanPackages(
 
           const advisories: UnifiedAdvisory[] = [];
           for (const vuln of osvResult.vulns ?? []) {
+            // If OSV returns a GHSA ID, label it as GHSA (not OSV)
+            // OSV often aggregates vulnerabilities from other sources like GHSA
+            const source = vuln.id.startsWith('GHSA-') ? 'ghsa' : 'osv';
+
             advisories.push({
               id: vuln.id,
-              source: 'osv',
+              source,
               severity: getSeverity(vuln),
               summary: vuln.summary,
               details: vuln.details,
@@ -204,6 +233,9 @@ async function scanPackages(
 
   // Step 2: Query GHSA for each package (no batch endpoint available)
   const limit = pLimit(opts.concurrency);
+  let ghsaRateLimited = false;
+  let ghsaRateLimitWarning = '';
+
   const ghsaQueries = packages.map((pkg) =>
     limit(async () => {
       try {
@@ -241,9 +273,19 @@ async function scanPackages(
           results[pkg.name] = deduped;
         }
       } catch (err) {
-        logger.debug({ err, package: pkg.name }, 'GHSA query failed');
+        // Handle GHSA rate limiting gracefully
+        if (err instanceof GhsaRateLimitError) {
+          ghsaRateLimited = true;
+          ghsaRateLimitWarning = err.message;
+          logger.warn(
+            { package: pkg.name, message: err.message },
+            'GHSA API rate limit encountered - falling back to OSV results only'
+          );
+        } else {
+          logger.debug({ err, package: pkg.name }, 'GHSA query failed');
+        }
 
-        // If GHSA fails, still include OSV results
+        // If GHSA fails (rate limit or error), still include OSV results
         const osvAdvisories = osvResults.get(pkg.name) ?? [];
         if (osvAdvisories.length > 0) {
           results[pkg.name] = osvAdvisories;
@@ -253,16 +295,72 @@ async function scanPackages(
   );
 
   await Promise.all(ghsaQueries);
+
+  // If rate limit was encountered, log a summary warning to inform the user
+  if (ghsaRateLimited) {
+    logger.warn(
+      { message: ghsaRateLimitWarning },
+      'GHSA queries encountered rate limiting. Scan results include OSV data only. ' +
+      'For GHSA results, retry the scan later or use a GitHub PAT with higher rate limits.'
+    );
+  }
+
   return results;
 }
 
+// Severity ranking for comparison (higher number = more severe)
+function severityRank(severity: string): number {
+  const normalizedSev = String(severity).toUpperCase();
+  if (normalizedSev === 'CRITICAL') return 5;
+  if (normalizedSev === 'HIGH') return 4;
+  if (normalizedSev === 'MEDIUM' || normalizedSev === 'MODERATE') return 3;
+  if (normalizedSev === 'LOW') return 2;
+  return 1; // UNKNOWN or other
+}
+
 function deduplicateAdvisories(advisories: UnifiedAdvisory[]): UnifiedAdvisory[] {
-  const seen = new Set<string>();
-  return advisories.filter((adv) => {
-    if (seen.has(adv.id)) return false;
-    seen.add(adv.id);
-    return true;
-  });
+  const byId = new Map<string, UnifiedAdvisory & { sources: Set<string> }>();
+
+  // Process advisories, tracking all sources that reported each advisory
+  for (const adv of advisories) {
+    const existing = byId.get(adv.id);
+
+    if (!existing) {
+      // First time seeing this advisory - store it with its source
+      byId.set(adv.id, {
+        ...adv,
+        sources: new Set([adv.source]),
+      });
+    } else {
+      // Advisory already seen - add the new source
+      const sources = existing.sources;
+      sources.add(adv.source);
+
+      // Update the source field to show all sources as comma-separated list
+      // Sort for consistent output: ghsa comes before osv alphabetically
+      const sourceList = Array.from(sources).sort().join(',');
+      existing.source = sourceList as any;
+
+      // Keep the higher severity rating if this advisory comes from multiple sources
+      if (severityRank(adv.severity) > severityRank(existing.severity)) {
+        existing.severity = adv.severity;
+      }
+
+      // Prefer GHSA details over OSV (GHSA usually has richer descriptions)
+      // If existing has no details but new one does, use the new one
+      if (!existing.details && adv.details) {
+        existing.details = adv.details;
+      }
+
+      // Similarly for summary - prefer non-empty ones
+      if (!existing.summary && adv.summary) {
+        existing.summary = adv.summary;
+      }
+    }
+  }
+
+  // Return advisories without the sources tracking field
+  return Array.from(byId.values()).map(({ sources, ...adv }) => adv);
 }
 
 function isVersionInRange(version: string, range: string, ecosystem: string): boolean {

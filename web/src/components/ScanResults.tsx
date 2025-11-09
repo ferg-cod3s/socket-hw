@@ -19,27 +19,20 @@ export function ScanResults({ result, fileName }: ScanResultsProps) {
     0
   );
 
-  // Group vulnerabilities by severity
+  // Group vulnerabilities by severity using Object.groupBy
+  const allAdvisories = Object.values(advisoriesByPackage).flat();
+  const advisoriesByGroup = Object.groupBy(
+    allAdvisories,
+    (advisory) => advisory.severity?.toUpperCase() || 'UNKNOWN'
+  );
+
   const severityCounts = {
-    CRITICAL: 0,
-    HIGH: 0,
-    MEDIUM: 0,
-    LOW: 0,
-    UNKNOWN: 0
+    CRITICAL: advisoriesByGroup['CRITICAL']?.length ?? 0,
+    HIGH: advisoriesByGroup['HIGH']?.length ?? 0,
+    MEDIUM: (advisoriesByGroup['MEDIUM']?.length ?? 0) + (advisoriesByGroup['MODERATE']?.length ?? 0),
+    LOW: advisoriesByGroup['LOW']?.length ?? 0,
+    UNKNOWN: advisoriesByGroup['UNKNOWN']?.length ?? 0
   };
-
-
-
-  Object.values(advisoriesByPackage).forEach(advisories => {
-    advisories.forEach(advisory => {
-      const severity = advisory.severity?.toUpperCase() || 'UNKNOWN';
-      if (severity in severityCounts) {
-        severityCounts[severity as keyof typeof severityCounts]++;
-      } else {
-        severityCounts.UNKNOWN++;
-      }
-    });
-  });
 
   const percentageVulnerable =
     totalDependencies > 0
@@ -64,11 +57,28 @@ export function ScanResults({ result, fileName }: ScanResultsProps) {
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
           Scan Results: {fileName}
         </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-          Scan completed in {scanDurationMs}ms
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Scanned <span className="font-semibold text-gray-900 dark:text-white">{totalDependencies}</span> {totalDependencies === 1 ? 'dependency' : 'dependencies'}
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Scan completed in {scanDurationMs}ms ({(scanDurationMs / 1000).toFixed(2)}s)
+            </p>
+          </div>
+          {vulnerablePackages > 0 && (
+            <div className="text-right">
+              <p className="text-xs uppercase tracking-wide text-red-600 dark:text-red-400 font-semibold">
+                ⚠️ Issues Found
+              </p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                {vulnerablePackages} package{vulnerablePackages !== 1 ? 's' : ''} with {totalVulnerabilities} vulnerabilit{totalVulnerabilities !== 1 ? 'ies' : 'y'}
+              </p>
+            </div>
+          )}
+        </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
           <StatCard
             label="Total Dependencies"
             value={totalDependencies.toString()}
@@ -154,7 +164,7 @@ export function ScanResults({ result, fileName }: ScanResultsProps) {
                   packageVersion: pkg?.version || pkgKey.split('@')[1]
                 }));
               })
-              .sort((a, b) => {
+              .toSorted((a, b) => {
                 // Define severity order
                 const severityOrder: Record<string, number> = {
                   CRITICAL: 0,
@@ -302,6 +312,10 @@ function VulnerabilityCard({
   advisory: UnifiedAdvisory;
 }) {
   const severity = advisory.severity?.toUpperCase() || 'UNKNOWN';
+  const rawTitle = advisory.summary?.trim();
+  const title = rawTitle && rawTitle.length > 0 ? rawTitle : advisory.id;
+  const description = advisory.details?.trim();
+  const showAdvisoryId = advisory.id && advisory.id !== title;
 
   const severityColors: Record<string, string> = {
     CRITICAL:
@@ -334,14 +348,19 @@ function VulnerabilityCard({
               {advisory.source.toUpperCase()}
             </span>
           </div>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            {advisory.id}
-          </p>
+          <h5 className="text-base font-semibold text-gray-900 dark:text-white mt-2">
+            {title}
+          </h5>
+          {showAdvisoryId && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Advisory ID: {advisory.id}
+            </p>
+          )}
         </div>
       </div>
 
       <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
-        {advisory.summary || advisory.details || 'No description available'}
+        {description || 'No description available'}
       </p>
 
       <div className="flex flex-wrap gap-4 text-sm">

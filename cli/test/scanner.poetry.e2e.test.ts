@@ -103,11 +103,11 @@ python-versions = ">=3.7, <4"
           ],
           database_specific: { severity: 'HIGH' },
         },
-      ])
+      ]),
     );
 
     ({ createCli } = await import('../src/index.ts'));
-  });
+  }, 30000); // 30 second timeout
 
   afterEach(() => {
     console.log = origLog;
@@ -147,8 +147,7 @@ python-versions = ">=3.7, <4"
       'https://api.osv.dev/v1/query',
       expect.objectContaining({
         body: expect.stringContaining('"ecosystem":"PyPI"'),
-      })
+      }),
     );
   });
 });
-

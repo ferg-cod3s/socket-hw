@@ -353,7 +353,7 @@ The project includes a Next.js web interface for scanning lockfiles via browser.
 # Start the web UI
 pnpm --filter web dev
 
-# Access at http://localhost:3000
+# Access at http://localhost:5173
 ```
 
 Features:

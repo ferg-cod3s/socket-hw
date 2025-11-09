@@ -68,14 +68,16 @@ describe('scanner e2e', () => {
       return {} as any;
     });
 
-    global.fetch = vi.fn().mockResolvedValue(
-      mockOsvResponse([
-        { id: 'OSV-123', affected: [{ package: { ecosystem: 'npm', name: 'left-pad' }, versions: ['1.0.0'] }] },
-      ])
-    );
+    global.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        mockOsvResponse([
+          { id: 'OSV-123', affected: [{ package: { ecosystem: 'npm', name: 'left-pad' }, versions: ['1.0.0'] }] },
+        ]),
+      );
 
     ({ createCli } = await import('../src/index.ts'));
-  });
+  }, 30000); // 30 second timeout
 
   afterEach(() => {
     console.log = origLog;

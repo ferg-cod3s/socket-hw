@@ -1,6 +1,7 @@
 import { getGitHubToken } from '../utils/auth.js';
-import { fetchWithRetry } from '../utils/retry.js';
+import { fetchWithRetry, isGraphQLRateLimitError } from '../utils/retry.js';
 import { AbortError } from 'p-retry';
+import { logger } from '../utils/logger.js';
 
 interface GhsaQuery {
   ecosystem: string; // GITHUB, NPM, PIP, etc.
@@ -21,6 +22,19 @@ export interface GhsaAdvisory {
   }[];
   references: { url: string }[];
   cvss?: { score: number; vectorString: string };
+}
+
+/**
+ * Indicates that GHSA API rate limiting was encountered
+ */
+export class GhsaRateLimitError extends Error {
+  constructor(
+    message: string,
+    public readonly retryAfterSeconds?: number
+  ) {
+    super(message);
+    this.name = 'GhsaRateLimitError';
+  }
 }
 
 export async function queryGhsa(q: GhsaQuery): Promise<GhsaAdvisory[]> {
@@ -81,6 +95,12 @@ export async function queryGhsa(q: GhsaQuery): Promise<GhsaAdvisory[]> {
     // Check if error message contains HTTP status code
     const statusMatch = error?.message?.match(/HTTP (\d+): (.+)/);
     if (statusMatch) {
+      const status = parseInt(statusMatch[1], 10);
+      if (status === 429) {
+        throw new GhsaRateLimitError(
+          `GHSA API rate limited (HTTP 429). GitHub GraphQL API has strict rate limits when using authentication.`
+        );
+      }
       throw new Error(`GHSA API error: ${statusMatch[1]} ${statusMatch[2]}`);
     }
     throw error;
@@ -89,12 +109,27 @@ export async function queryGhsa(q: GhsaQuery): Promise<GhsaAdvisory[]> {
   if (!response.ok) {
     // Retry wrapper already handles retryable errors, so this should only happen
     // for non-retryable errors or after all retries are exhausted
+    if (response.status === 429) {
+      throw new GhsaRateLimitError(
+        `GHSA API rate limited (HTTP 429). GitHub GraphQL API has strict rate limits when using authentication.`
+      );
+    }
     throw new Error(`GHSA API error: ${response.status} ${response.statusText}`);
   }
 
   const data = await response.json();
 
+  // Check for GraphQL-level rate limit errors
+  if (isGraphQLRateLimitError(data)) {
+    throw new GhsaRateLimitError(
+      `GHSA GraphQL rate limit exceeded. GitHub has strict rate limits for authenticated requests. ` +
+      `Consider using a higher-privileged token or increasing delays between requests.`,
+      60 // Suggest waiting 60 seconds
+    );
+  }
+
   if (data.errors) {
+    logger.warn({ errors: data.errors, package: q.packageName }, 'GHSA GraphQL errors');
     throw new Error(`GHSA GraphQL errors: ${JSON.stringify(data.errors)}`);
   }
 

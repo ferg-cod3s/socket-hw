@@ -39,8 +39,17 @@ export function formatConsoleOutput(
     console.log(chalk.cyan(`\n${pkgName}@${pkgVersion}:`));
     for (const v of vulns) {
       const severityColor = severityToColor(v.severity);
-      const sourceLabel = v.source === 'ghsa' ? chalk.dim('[GHSA]') : chalk.dim('[OSV]');
-      console.log(`  ${chalk.red('●')} ${v.id} ${severityColor(`[${v.severity}]`)} ${sourceLabel}`);
+      // Handle comma-separated sources (when advisory found in multiple sources)
+      const sourceLabel = chalk.dim(`[${v.source.toUpperCase()}]`);
+      const title = v.summary?.trim();
+      const displayTitle = title && title.length > 0 ? title : v.id;
+      console.log(`  ${chalk.red('●')} ${displayTitle} ${severityColor(`[${v.severity}]`)} ${sourceLabel}`);
+
+      if (title && title.length > 0 && title !== v.id) {
+        console.log(chalk.dim(`    Advisory ID: ${v.id}`));
+      }
+
+      console.log(chalk.dim(`    Title: ${displayTitle}`));
 
       // Show CVE IDs if available
       if (v.cveIds && v.cveIds.length > 0) {

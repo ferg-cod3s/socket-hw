@@ -11,7 +11,9 @@ import { getSupportedFilenames } from "./providers/index.js";
 // Re-export for programmatic usage
 export { scanPath } from "./core/scan.js";
 export { getSupportedFilenames } from "./providers/index.js";
+export { progressTracker, updateProgress } from "./utils/progress.js";
 export type { ScanResult, ScanOptions } from "./core/scan.js";
+export type { ProgressEvent, ProgressListener, ProgressStage } from "./utils/progress.js";
 
 export function createCli(argv?: string[]) {
   const y = yargs(argv ?? hideBin(process.argv))
@@ -127,7 +129,7 @@ export function createCli(argv?: string[]) {
 // Export UnifiedAdvisory for use in output modules
 export interface UnifiedAdvisory {
   id: string;
-  source: 'osv' | 'ghsa';
+  source: 'osv' | 'ghsa' | 'osv,ghsa' | 'ghsa,osv';
   severity: string;
   summary?: string;
   details?: string;
