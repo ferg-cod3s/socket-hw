@@ -29,15 +29,19 @@ export function getGitHubToken(): string | undefined {
 }
 
 /**
+ * Clear cached token (for testing)
+ */
+export function clearCachedToken(): void {
+  cachedToken = undefined;
+}
+
+/**
  * Validate and get GitHub token with helpful error message
  */
 export function requireGitHubToken(): string {
   const token = getGitHubToken();
   if (!token) {
-    throw new Error(
-      'GitHub token required. Set GITHUB_TOKEN environment variable or run `gh auth login`'
-    );
+    throw new Error('GitHub token required. Set GITHUB_TOKEN environment variable or run `gh auth login`');
   }
   return token;
 }
-

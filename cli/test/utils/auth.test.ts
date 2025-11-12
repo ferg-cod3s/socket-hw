@@ -4,7 +4,7 @@ import { execSync } from 'child_process';
 // Mock child_process before importing auth
 vi.mock('child_process');
 
-const { getGitHubToken, requireGitHubToken } = await import('../../src/utils/auth.js');
+const { getGitHubToken, requireGitHubToken, clearCachedToken } = await import('../../src/utils/auth.js');
 
 describe('utils/auth', () => {
   const originalEnv = process.env.GITHUB_TOKEN;
@@ -13,6 +13,7 @@ describe('utils/auth', () => {
     vi.clearAllMocks();
     vi.resetAllMocks();
     delete process.env.GITHUB_TOKEN;
+    clearCachedToken();
   });
 
   afterEach(() => {
