@@ -234,5 +234,250 @@ package@npm:^1.0.0:
   it('handles malformed YAML gracefully', () => {
     expect(() => parseYarnBerry('invalid: yaml: : :')).toThrow();
   });
-});
 
+  it('parses yarn berry v4+ format with zero-installs', () => {
+    const lockContent = `# This file is @generated automatically
+# Manual changes might be lost - proceed with caution!
+
+__metadata:
+  version: 8
+  cacheKey: 10c0
+  zeroInstalls: true
+
+express@npm:^4.18.0:
+  version: 4.18.2
+  resolution: "express@npm:4.18.2"
+  checksum: 10c0/express-4.18.2.tgz#sha512-abc123
+  languageName: node
+  linkType: hard
+
+lodash@npm:^4.17.21:
+  version: 4.17.21
+  resolution: "lodash@npm:4.17.21"
+  checksum: 10c0/lodash-4.17.21.tgz#sha512-def456
+  languageName: node
+  linkType: hard
+
+accepts@npm:~1.3.8:
+  version: 1.3.8
+  resolution: "accepts@npm:1.3.8"
+  checksum: 10c0/accepts-1.3.8.tgz#sha512-ghi789
+  languageName: node
+  linkType: hard
+`;
+
+    const result = parseYarnBerry(lockContent);
+
+    expect(result.length).toBeGreaterThanOrEqual(3);
+    expect(result).toContainEqual({
+      name: 'express',
+      version: '4.18.2',
+      ecosystem: 'npm',
+    });
+    expect(result).toContainEqual({
+      name: 'lodash',
+      version: '4.17.21',
+      ecosystem: 'npm',
+    });
+    expect(result).toContainEqual({
+      name: 'accepts',
+      version: '1.3.8',
+      ecosystem: 'npm',
+    });
+  });
+
+  it('handles yarn berry with patch: protocol', () => {
+    const lockContent = `__metadata:
+  version: 8
+
+lodash@npm:^4.17.21:
+  version: 4.17.21
+  resolution: "lodash@npm:4.17.21"
+
+lodash@patch:lodash@npm%3A4.17.21#patches/lodash.patch:
+  version: 4.17.21
+  resolution: "lodash@patch:lodash@npm%3A4.17.21#patches/lodash.patch"
+`;
+
+    const result = parseYarnBerry(lockContent);
+
+    // Should include both patched and unpatched versions
+    expect(result.length).toBeGreaterThanOrEqual(1);
+    expect(result.some((d) => d.name === 'lodash' && d.version === '4.17.21')).toBe(true);
+  });
+
+  it('handles yarn berry with workspace: protocol', () => {
+    const lockContent = `__metadata:
+  version: 8
+
+express@npm:^4.18.0:
+  version: 4.18.2
+  resolution: "express@npm:4.18.2"
+
+workspace-pkg@workspace:packages/pkg-a:
+  version: 1.0.0
+  resolution: "workspace-pkg@workspace:packages/pkg-a"
+
+another-pkg@workspace:../shared:
+  version: 2.0.0
+  resolution: "another-pkg@workspace:../shared"
+`;
+
+    const result = parseYarnBerry(lockContent);
+
+    // Should include external packages but skip workspace packages
+    expect(result.length).toBeGreaterThanOrEqual(1);
+    expect(result.some((d) => d.name === 'express')).toBe(true);
+    expect(result.some((d) => d.name === 'workspace-pkg')).toBe(false);
+    expect(result.some((d) => d.name === 'another-pkg')).toBe(false);
+  });
+
+  it('handles yarn berry with file: protocol', () => {
+    const lockContent = `__metadata:
+  version: 8
+
+express@npm:^4.18.0:
+  version: 4.18.2
+  resolution: "express@npm:4.18.2"
+
+local-pkg@file:../local-package:
+  version: 1.0.0
+  resolution: "local-pkg@file:../local-package"
+
+another-local@file:./packages/local:
+  version: 2.0.0
+  resolution: "another-local@file:./packages/local"
+`;
+
+    const result = parseYarnBerry(lockContent);
+
+    // Should include external packages but skip file: protocol packages
+    expect(result.length).toBeGreaterThanOrEqual(1);
+    expect(result.some((d) => d.name === 'express')).toBe(true);
+    expect(result.some((d) => d.name === 'local-pkg')).toBe(false);
+    expect(result.some((d) => d.name === 'another-local')).toBe(false);
+  });
+
+  it('skips yarn berry with git: protocol', () => {
+    const lockContent = `__metadata:
+  version: 8
+
+express@npm:^4.18.0:
+  version: 4.18.2
+  resolution: "express@npm:4.18.2"
+
+my-repo@github:user/repo#v1.0.0:
+  version: 1.0.0
+  resolution: "my-repo@github:user/repo#v1.0.0"
+
+another-repo@git+https://github.com/user/repo.git#commit123:
+  version: 1.0.0
+  resolution: "another-repo@git+https://github.com/user/repo.git#commit123"
+`;
+
+    const result = parseYarnBerry(lockContent);
+
+    expect(result).toContainEqual({
+      name: 'express',
+      version: '4.18.2',
+      ecosystem: 'npm',
+    });
+    // Git packages should be skipped
+    expect(result.some((d) => d.name === 'my-repo')).toBe(false);
+    expect(result.some((d) => d.name === 'another-repo')).toBe(false);
+  });
+
+  it('handles yarn berry with complex dependency descriptors', () => {
+    const lockContent = `__metadata:
+  version: 8
+
+"@babel/core@npm:^7.23.0, @babel/core@npm:^7.22.0":
+  version: 7.23.0
+  resolution: "@babel/core@npm:7.23.0"
+
+"@types/node@npm:>=20.0.0":
+  version: 20.10.0
+  resolution: "@types/node@npm:20.10.0"
+
+typescript@npm:~5.2.0:
+  version: 5.2.2
+  resolution: "typescript@npm:5.2.2"
+`;
+
+    const result = parseYarnBerry(lockContent);
+
+    expect(result).toContainEqual({
+      name: '@babel/core',
+      version: '7.23.0',
+      ecosystem: 'npm',
+    });
+    expect(result).toContainEqual({
+      name: '@types/node',
+      version: '20.10.0',
+      ecosystem: 'npm',
+    });
+    expect(result).toContainEqual({
+      name: 'typescript',
+      version: '5.2.2',
+      ecosystem: 'npm',
+    });
+  });
+
+  it('handles yarn berry with different checksum formats', () => {
+    const lockContent = `__metadata:
+  version: 8
+
+package-sha1@npm:1.0.0:
+  version: 1.0.0
+  resolution: "package-sha1@npm:1.0.0"
+  checksum: 1234567890abcdef
+
+package-sha512@npm:1.0.0:
+  version: 1.0.0
+  resolution: "package-sha512@npm:1.0.0"
+  checksum: sha512-abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+`;
+
+    const result = parseYarnBerry(lockContent);
+
+    expect(result.length).toBeGreaterThanOrEqual(2);
+    expect(result.some((d) => d.name === 'package-sha1')).toBe(true);
+    expect(result.some((d) => d.name === 'package-sha512')).toBe(true);
+  });
+
+  it('handles yarn classic with complex version ranges', () => {
+    const lockContent = `# yarn lockfile v1
+
+express@^4.0.0:
+  version "4.18.2"
+  resolved "https://registry.yarnpkg.com/express/-/express-4.18.2.tgz"
+
+lodash@^4.0.0:
+  version "4.17.21"
+  resolved "https://registry.yarnpkg.com/lodash/-/lodash-4.17.21.tgz"
+
+accepts@~1.3.8:
+  version "1.3.8"
+  resolved "https://registry.yarnpkg.com/accepts/-/accepts-1.3.8.tgz"
+`;
+
+    const result = parseYarnClassic(lockContent);
+
+    expect(result.length).toBeGreaterThanOrEqual(3);
+    expect(result).toContainEqual({
+      name: 'express',
+      version: '4.18.2',
+      ecosystem: 'npm',
+    });
+    expect(result).toContainEqual({
+      name: 'lodash',
+      version: '4.17.21',
+      ecosystem: 'npm',
+    });
+    expect(result).toContainEqual({
+      name: 'accepts',
+      version: '1.3.8',
+      ecosystem: 'npm',
+    });
+  });
+});

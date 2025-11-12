@@ -201,5 +201,136 @@ describe('parseNpmLock', () => {
   it('handles malformed JSON gracefully', () => {
     expect(() => parseNpmLock('invalid json')).toThrow();
   });
-});
 
+  it('parses npm-shrinkwrap.json format (same as package-lock.json)', () => {
+    const lockContent = JSON.stringify({
+      lockfileVersion: 1, // shrinkwrap uses v1 format
+      packages: {
+        '': {
+          name: 'test-project',
+          version: '1.0.0',
+          dependencies: {
+            express: '^4.18.0',
+          },
+        },
+        'node_modules/express': {
+          version: '4.18.2',
+          resolved: 'https://registry.npmjs.org/express/-/express-4.18.2.tgz',
+          dependencies: {
+            accepts: '~1.3.8',
+          },
+        },
+        'node_modules/accepts': {
+          version: '1.3.8',
+          resolved: 'https://registry.npmjs.org/accepts/-/accepts-1.3.8.tgz',
+        },
+      },
+    });
+
+    const result = parseNpmLock(lockContent);
+
+    expect(result).toHaveLength(2);
+    expect(result).toContainEqual({
+      name: 'express',
+      version: '4.18.2',
+      ecosystem: 'npm',
+    });
+    expect(result).toContainEqual({
+      name: 'accepts',
+      version: '1.3.8',
+      ecosystem: 'npm',
+    });
+  });
+
+  it('handles version conflicts with nested duplicates', () => {
+    const lockContent = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        'node_modules/react': {
+          version: '18.2.0',
+        },
+        'node_modules/express/node_modules/react': {
+          version: '17.0.2', // Different version due to conflict
+        },
+        'node_modules/lodash/node_modules/react': {
+          version: '16.14.0', // Another version
+        },
+      },
+    });
+
+    const result = parseNpmLock(lockContent);
+
+    // Should include all versions found
+    expect(result.length).toBeGreaterThanOrEqual(3);
+    const reactVersions = result.filter((d) => d.name === 'react').map((d) => d.version);
+    expect(reactVersions).toContain('18.2.0');
+    expect(reactVersions).toContain('17.0.2');
+    expect(reactVersions).toContain('16.14.0');
+  });
+
+  it('handles deeply nested dependency chains', () => {
+    const lockContent = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        'node_modules/a': {
+          version: '1.0.0',
+          dependencies: { b: '^1.0.0' },
+        },
+        'node_modules/a/node_modules/b': {
+          version: '1.0.0',
+          dependencies: { c: '^1.0.0' },
+        },
+        'node_modules/a/node_modules/b/node_modules/c': {
+          version: '1.0.0',
+          dependencies: { d: '^1.0.0' },
+        },
+        'node_modules/a/node_modules/b/node_modules/c/node_modules/d': {
+          version: '1.0.0',
+        },
+      },
+    });
+
+    const result = parseNpmLock(lockContent);
+
+    expect(result.length).toBeGreaterThanOrEqual(4);
+    expect(result.some((d) => d.name === 'a' && d.version === '1.0.0')).toBe(true);
+    expect(result.some((d) => d.name === 'b' && d.version === '1.0.0')).toBe(true);
+    expect(result.some((d) => d.name === 'c' && d.version === '1.0.0')).toBe(true);
+    expect(result.some((d) => d.name === 'd' && d.version === '1.0.0')).toBe(true);
+  });
+
+  it('handles packages with complex version specifiers', () => {
+    const lockContent = JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        'node_modules/@babel/core': {
+          version: '7.23.0',
+        },
+        'node_modules/@babel/preset-env': {
+          version: '7.22.20',
+        },
+        'node_modules/@typescript-eslint/eslint-plugin': {
+          version: '6.7.0',
+        },
+      },
+    });
+
+    const result = parseNpmLock(lockContent);
+
+    expect(result).toContainEqual({
+      name: '@babel/core',
+      version: '7.23.0',
+      ecosystem: 'npm',
+    });
+    expect(result).toContainEqual({
+      name: '@babel/preset-env',
+      version: '7.22.20',
+      ecosystem: 'npm',
+    });
+    expect(result).toContainEqual({
+      name: '@typescript-eslint/eslint-plugin',
+      version: '6.7.0',
+      ecosystem: 'npm',
+    });
+  });
+});

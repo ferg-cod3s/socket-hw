@@ -25,11 +25,14 @@ interface PnpmLock {
   lockfileVersion: string | number;
   dependencies?: Record<string, { specifier: string; version: string }>;
   devDependencies?: Record<string, { specifier: string; version: string }>;
-  packages?: Record<string, {
-    version?: string;
-    dev?: boolean;
-    dependencies?: Record<string, string>;
-  }>;
+  packages?: Record<
+    string,
+    {
+      version?: string;
+      dev?: boolean;
+      dependencies?: Record<string, string>;
+    }
+  >;
 }
 
 export function parsePnpmLock(lockContent: string, includeDev: boolean): Dependency[] {
@@ -49,6 +52,16 @@ export function parsePnpmLock(lockContent: string, includeDev: boolean): Depende
 
     // Skip workspace protocol packages
     if (pkgSpec.includes('workspace:')) {
+      continue;
+    }
+
+    // Skip file: protocol packages (local file references)
+    if (pkgSpec.includes('file:')) {
+      continue;
+    }
+
+    // Skip git: protocol packages (git references)
+    if (pkgSpec.includes('git+') || pkgSpec.includes('github:') || pkgSpec.includes('git:')) {
       continue;
     }
 
@@ -95,4 +108,3 @@ export function parsePnpmLock(lockContent: string, includeDev: boolean): Depende
 
   return deps;
 }
-

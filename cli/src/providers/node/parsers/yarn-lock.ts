@@ -12,6 +12,16 @@ export function parseYarnClassic(lockContent: string): Dependency[] {
   }
 
   for (const [key, value] of Object.entries(parsed.object)) {
+    // Skip file: protocol packages (local file references)
+    if (key.includes('file:')) {
+      continue;
+    }
+
+    // Skip git: protocol packages (git references)
+    if (key.includes('git+') || key.includes('github:') || key.includes('git:')) {
+      continue;
+    }
+
     // Key format: "package-name@version-range" or "@scope/package-name@version-range"
     // Extract package name
     const lastAtIdx = key.lastIndexOf('@');
@@ -54,6 +64,16 @@ export function parseYarnBerry(lockContent: string): Dependency[] {
     // Skip metadata
     if (key === '__metadata') continue;
 
+    // Skip file: protocol packages (local file references)
+    if (key.includes('file:')) {
+      continue;
+    }
+
+    // Skip git: protocol packages (git references)
+    if (key.includes('git+') || key.includes('github:') || key.includes('git:')) {
+      continue;
+    }
+
     // Type guard for value
     if (!value || typeof value !== 'object') continue;
     const pkgValue = value as { version?: string };
@@ -90,4 +110,3 @@ export function parseYarnBerry(lockContent: string): Dependency[] {
 
   return deps;
 }
-

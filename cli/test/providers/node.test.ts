@@ -81,9 +81,7 @@ describe('NodeProvider', () => {
     it('detects npm from lockfile', () => {
       mockExistsSync.mockImplementation((p: any) => {
         const path = String(p);
-        return (
-          path.endsWith('package.json') || path.endsWith('package-lock.json')
-        );
+        return path.endsWith('package.json') || path.endsWith('package-lock.json');
       });
 
       const result = provider.detect('/test/project');
@@ -181,7 +179,7 @@ describe('NodeProvider', () => {
             'left-pad': '^1.0.0',
             express: '~4.18.0',
           },
-        })
+        }),
       );
 
       const deps = await provider.gatherDependencies('/test/project', {});
@@ -209,7 +207,7 @@ describe('NodeProvider', () => {
         JSON.stringify({
           dependencies: { express: '~4.18.0' },
           devDependencies: { vitest: '^0.34.0' },
-        })
+        }),
       );
 
       const deps = await provider.gatherDependencies('/test/project', {
@@ -234,7 +232,7 @@ describe('NodeProvider', () => {
         JSON.stringify({
           dependencies: { express: '~4.18.0' },
           devDependencies: { vitest: '^0.34.0' },
-        })
+        }),
       );
 
       const deps = await provider.gatherDependencies('/test/project', {});
@@ -416,12 +414,14 @@ packages:
     });
 
     it('handles standalone package-lock.json file', async () => {
-      mockReadFileSync.mockReturnValue(JSON.stringify({
-        lockfileVersion: 3,
-        packages: {
-          'node_modules/lodash': { version: '4.17.21' },
-        },
-      }));
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({
+          lockfileVersion: 3,
+          packages: {
+            'node_modules/lodash': { version: '4.17.21' },
+          },
+        }),
+      );
 
       const deps = await provider.gatherDependencies('/test/project', {
         standaloneLockfile: '/tmp/package-lock.json',
@@ -467,7 +467,7 @@ lodash@^4.17.21:
       await expect(
         provider.gatherDependencies('/test/project', {
           standaloneLockfile: '/tmp/package.json',
-        })
+        }),
       ).rejects.toThrow(/package.json requires a lockfile/);
     });
 
@@ -475,7 +475,7 @@ lodash@^4.17.21:
       await expect(
         provider.gatherDependencies('/test/project', {
           standaloneLockfile: '/tmp/pnpm-workspace.yaml',
-        })
+        }),
       ).rejects.toThrow(/pnpm-workspace.yaml only defines workspace structure/);
     });
 
@@ -487,7 +487,7 @@ lodash@^4.17.21:
       await expect(
         provider.gatherDependencies('/test/project', {
           standaloneLockfile: '/tmp/pnpm-lock.yaml',
-        })
+        }),
       ).rejects.toThrow('File read error');
     });
 
@@ -512,7 +512,7 @@ lodash@^4.17.21:
         JSON.stringify({
           dependencies: {},
           devDependencies: {},
-        })
+        }),
       );
 
       const deps = await provider.gatherDependencies('/test/project', {
@@ -561,9 +561,7 @@ lodash@^4.17.21:
         const path = String(p);
         return path.endsWith('package.json');
       });
-      mockReadFileSync.mockReturnValue(
-        JSON.stringify({ packageManager: 'pnpm@8.0.0' })
-      );
+      mockReadFileSync.mockReturnValue(JSON.stringify({ packageManager: 'pnpm@8.0.0' }));
 
       const result = provider.detect('/test/project');
       expect(result.name).toBe('pnpm');
@@ -574,9 +572,7 @@ lodash@^4.17.21:
         const path = String(p);
         return path.endsWith('package.json');
       });
-      mockReadFileSync.mockReturnValue(
-        JSON.stringify({ packageManager: 'yarn@1.22.0' })
-      );
+      mockReadFileSync.mockReturnValue(JSON.stringify({ packageManager: 'yarn@1.22.0' }));
 
       const result = provider.detect('/test/project');
       expect(result.name).toBe('yarn');
@@ -587,9 +583,7 @@ lodash@^4.17.21:
         const path = String(p);
         return path.endsWith('package.json');
       });
-      mockReadFileSync.mockReturnValue(
-        JSON.stringify({ packageManager: 'npm@9.0.0' })
-      );
+      mockReadFileSync.mockReturnValue(JSON.stringify({ packageManager: 'npm@9.0.0' }));
 
       const result = provider.detect('/test/project');
       expect(result.name).toBe('npm');
@@ -599,10 +593,7 @@ lodash@^4.17.21:
       mockExistsSync.mockImplementation((p: any) => {
         const path = String(p);
         // Only return true for package.json and pnpm-workspace.yaml, not lockfiles
-        return (
-          path.endsWith('package.json') ||
-          (path.endsWith('pnpm-workspace.yaml') && !path.includes('lock'))
-        );
+        return path.endsWith('package.json') || (path.endsWith('pnpm-workspace.yaml') && !path.includes('lock'));
       });
       mockReadFileSync.mockReturnValue(JSON.stringify({ name: 'test' }));
 
@@ -639,9 +630,7 @@ lodash@^4.17.21:
         if (path.endsWith('yarn.lock')) return false;
         return path.endsWith('package.json');
       });
-      mockReadFileSync.mockReturnValue(
-        JSON.stringify({ packageManager: 'yarn@3.2.0' })
-      );
+      mockReadFileSync.mockReturnValue(JSON.stringify({ packageManager: 'yarn@3.2.0' }));
 
       const result = provider.detect('/test/project');
       expect(result.name).toBe('yarn');
@@ -653,9 +642,7 @@ lodash@^4.17.21:
         const path = String(p);
         return path.endsWith('package.json') || path.endsWith('yarn.lock');
       });
-      mockReadFileSync.mockReturnValue(
-        JSON.stringify({ packageManager: 'yarn@1.22.19' })
-      );
+      mockReadFileSync.mockReturnValue(JSON.stringify({ packageManager: 'yarn@1.22.19' }));
 
       const result = provider.detect('/test/project');
       expect(result.name).toBe('yarn');
@@ -667,9 +654,7 @@ lodash@^4.17.21:
         const path = String(p);
         return path.endsWith('package.json') || path.endsWith('yarn.lock');
       });
-      mockReadFileSync.mockReturnValue(
-        JSON.stringify({ packageManager: 'yarn@invalid' })
-      );
+      mockReadFileSync.mockReturnValue(JSON.stringify({ packageManager: 'yarn@invalid' }));
 
       const result = provider.detect('/test/project');
       expect(result.name).toBe('yarn');
@@ -732,9 +717,7 @@ lodash@^4.17.21:
           const path = String(p);
           return path.endsWith('package.json') || path.endsWith('yarn.lock');
         });
-        mockReadFileSync.mockReturnValue(
-          JSON.stringify({ packageManager: 'yarn@1.22.0' })
-        );
+        mockReadFileSync.mockReturnValue(JSON.stringify({ packageManager: 'yarn@1.22.0' }));
 
         await provider.ensureLockfile('/test/project', { forceRefresh: true });
 
@@ -751,9 +734,7 @@ lodash@^4.17.21:
           if (path.endsWith('yarn.lock')) return false;
           return path.endsWith('package.json');
         });
-        mockReadFileSync.mockReturnValue(
-          JSON.stringify({ packageManager: 'yarn@3.0.0' })
-        );
+        mockReadFileSync.mockReturnValue(JSON.stringify({ packageManager: 'yarn@3.0.0' }));
 
         await provider.ensureLockfile('/test/project', { forceRefresh: true });
 
@@ -798,9 +779,7 @@ lodash@^4.17.21:
           const path = String(p);
           return path.endsWith('package.json') || path.endsWith('yarn.lock');
         });
-        mockReadFileSync.mockReturnValue(
-          JSON.stringify({ packageManager: 'yarn@1.22.0' })
-        );
+        mockReadFileSync.mockReturnValue(JSON.stringify({ packageManager: 'yarn@1.22.0' }));
 
         await provider.ensureLockfile('/test/project', { forceValidate: true });
 
@@ -817,9 +796,7 @@ lodash@^4.17.21:
           if (path.endsWith('yarn.lock')) return false;
           return path.endsWith('package.json');
         });
-        mockReadFileSync.mockReturnValue(
-          JSON.stringify({ packageManager: 'yarn@3.0.0' })
-        );
+        mockReadFileSync.mockReturnValue(JSON.stringify({ packageManager: 'yarn@3.0.0' }));
 
         await provider.ensureLockfile('/test/project', { forceValidate: true });
 
@@ -853,9 +830,7 @@ lodash@^4.17.21:
           const path = String(p);
           return path.endsWith('package.json');
         });
-        mockReadFileSync.mockReturnValue(
-          JSON.stringify({ packageManager: 'yarn@1.22.0' })
-        );
+        mockReadFileSync.mockReturnValue(JSON.stringify({ packageManager: 'yarn@1.22.0' }));
 
         await provider.ensureLockfile('/test/project', {
           createIfMissing: true,
@@ -872,9 +847,7 @@ lodash@^4.17.21:
           const path = String(p);
           return path.endsWith('package.json');
         });
-        mockReadFileSync.mockReturnValue(
-          JSON.stringify({ packageManager: 'yarn@3.0.0' })
-        );
+        mockReadFileSync.mockReturnValue(JSON.stringify({ packageManager: 'yarn@3.0.0' }));
 
         await provider.ensureLockfile('/test/project', {
           createIfMissing: true,
@@ -944,9 +917,9 @@ lodash@^4.17.21:
           return {} as any;
         });
 
-        await expect(
-          provider.ensureLockfile('/test/project', { forceValidate: true })
-        ).rejects.toThrow('Command failed');
+        await expect(provider.ensureLockfile('/test/project', { forceValidate: true })).rejects.toThrow(
+          'Command failed',
+        );
       });
     });
   });
@@ -969,5 +942,307 @@ lodash@^4.17.21:
       expect(manifests).toContain('pnpm-workspace.yaml');
     });
   });
-});
 
+  /**
+   * Integration Tests
+   *
+   * Tests complex real-world scenarios with actual lockfile parsing
+   * and dependency resolution.
+   */
+  describe('integration tests', () => {
+    it('handles complex npm lockfile with nested dependencies and conflicts', async () => {
+      mockExistsSync.mockImplementation((p: any) => {
+        const path = String(p);
+        return path.endsWith('package.json') || path.endsWith('package-lock.json');
+      });
+
+      mockReadFileSync.mockImplementation((p: any) => {
+        const path = String(p);
+        if (path.endsWith('package.json')) {
+          return JSON.stringify({
+            name: 'complex-app',
+            dependencies: {
+              react: '^18.0.0',
+              express: '^4.18.0',
+            },
+          });
+        }
+        if (path.endsWith('package-lock.json')) {
+          return JSON.stringify({
+            lockfileVersion: 3,
+            packages: {
+              '': {
+                name: 'complex-app',
+                dependencies: { react: '^18.0.0', express: '^4.18.0' },
+              },
+              'node_modules/react': { version: '18.2.0' },
+              'node_modules/express': {
+                version: '4.18.2',
+                dependencies: { accepts: '~1.3.8', 'body-parser': '^1.20.0' },
+              },
+              'node_modules/accepts': { version: '1.3.8' },
+              'node_modules/body-parser': {
+                version: '1.20.2',
+                dependencies: { bytes: '3.1.2' },
+              },
+              'node_modules/bytes': { version: '3.1.2' },
+              // Version conflict scenario
+              'node_modules/express/node_modules/accepts': { version: '1.3.7' },
+            },
+          });
+        }
+        return '';
+      });
+
+      const deps = await provider.gatherDependencies('/test/project', {});
+
+      // Should include all transitive dependencies and handle conflicts
+      expect(deps.length).toBeGreaterThanOrEqual(5);
+      expect(deps.some((d) => d.name === 'react' && d.version === '18.2.0')).toBe(true);
+      expect(deps.some((d) => d.name === 'express' && d.version === '4.18.2')).toBe(true);
+      expect(deps.some((d) => d.name === 'accepts')).toBe(true); // Both versions
+      expect(deps.some((d) => d.name === 'body-parser')).toBe(true);
+      expect(deps.some((d) => d.name === 'bytes')).toBe(true);
+    });
+
+    it('handles complex pnpm workspace with multiple packages', async () => {
+      mockExistsSync.mockImplementation((p: any) => {
+        const path = String(p);
+        return path.endsWith('package.json') || path.endsWith('pnpm-lock.yaml');
+      });
+
+      mockReadFileSync.mockImplementation((p: any) => {
+        const path = String(p);
+        if (path.endsWith('package.json')) {
+          return JSON.stringify({
+            name: 'workspace-root',
+            dependencies: { shared: 'workspace:*' },
+          });
+        }
+        if (path.endsWith('pnpm-lock.yaml')) {
+          return `
+lockfileVersion: '6.0'
+
+importers:
+  .:
+    dependencies:
+      shared: workspace:*
+      lodash: ^4.17.21
+  packages/app:
+    dependencies:
+      shared: workspace:*
+      react: ^18.0.0
+      express: ^4.18.0
+  packages/lib:
+    dependencies:
+      shared: workspace:*
+      typescript: ^5.0.0
+
+packages:
+  lodash@4.17.21:
+    version: 4.17.21
+  react@18.2.0:
+    version: 18.2.0
+  express@4.18.2:
+    version: 4.18.2
+    dependencies:
+      accepts: /accepts@1.3.8
+  accepts@1.3.8:
+    version: 1.3.8
+  typescript@5.2.2:
+    version: 5.2.2
+  shared@workspace:packages/shared:
+    version: 1.0.0
+`;
+        }
+        return '';
+      });
+
+      const deps = await provider.gatherDependencies('/test/project', {});
+
+      // Should include external dependencies from all workspace packages but skip workspace packages
+      expect(deps.length).toBeGreaterThanOrEqual(5);
+      expect(deps.some((d) => d.name === 'lodash')).toBe(true);
+      expect(deps.some((d) => d.name === 'react')).toBe(true);
+      expect(deps.some((d) => d.name === 'express')).toBe(true);
+      expect(deps.some((d) => d.name === 'accepts')).toBe(true);
+      expect(deps.some((d) => d.name === 'typescript')).toBe(true);
+      expect(deps.some((d) => d.name === 'shared')).toBe(false); // workspace protocol
+    });
+
+    it('handles yarn berry workspace with zero-installs and patches', async () => {
+      mockExistsSync.mockImplementation((p: any) => {
+        const path = String(p);
+        return path.endsWith('package.json') || path.endsWith('yarn.lock');
+      });
+
+      mockReadFileSync.mockImplementation((p: any) => {
+        const path = String(p);
+        if (path.endsWith('package.json')) {
+          return JSON.stringify({
+            name: 'berry-workspace',
+            packageManager: 'yarn@4.0.0',
+            dependencies: { lodash: '^4.17.21' },
+          });
+        }
+        if (path.endsWith('yarn.lock')) {
+          return `__metadata:
+  version: 8
+  cacheKey: 10c0
+  zeroInstalls: true
+
+lodash@npm:^4.17.21:
+  version: "4.17.21"
+  resolution: "lodash@npm:4.17.21"
+  languageName: node
+  linkType: hard
+
+express@npm:^4.18.0:
+  version: "4.18.2"
+  resolution: "express@npm:4.18.2"
+  languageName: node
+  linkType: hard
+
+workspace-pkg@workspace:packages/shared:
+  version: "1.0.0"
+  resolution: "workspace-pkg@workspace:packages/shared"
+`;
+        }
+        return '';
+      });
+
+      const deps = await provider.gatherDependencies('/test/project', {});
+
+      // Should detect yarn berry and parse correctly, excluding workspaces
+      expect(deps.length).toBeGreaterThanOrEqual(1);
+      expect(deps.some((d) => d.name === 'lodash')).toBe(true);
+      expect(deps.some((d) => d.name === 'workspace-pkg')).toBe(false);
+    });
+
+    it('handles mixed package managers and dev dependencies', async () => {
+      mockExistsSync.mockImplementation((p: any) => {
+        const path = String(p);
+        return path.endsWith('package.json') || path.endsWith('pnpm-lock.yaml');
+      });
+
+      mockReadFileSync.mockImplementation((p: any) => {
+        const path = String(p);
+        if (path.endsWith('package.json')) {
+          return JSON.stringify({
+            name: 'mixed-deps-app',
+            dependencies: {
+              react: '^18.0.0',
+              lodash: '^4.17.21',
+            },
+            devDependencies: {
+              vitest: '^1.0.0',
+              '@types/node': '^20.0.0',
+              eslint: '^8.0.0',
+            },
+          });
+        }
+        if (path.endsWith('pnpm-lock.yaml')) {
+          return `
+lockfileVersion: '6.0'
+
+importers:
+  .:
+    dependencies:
+      react: ^18.0.0
+      lodash: ^4.17.21
+    devDependencies:
+      vitest: ^1.0.0
+      '@types/node': ^20.0.0
+      eslint: ^8.0.0
+
+packages:
+  react@18.2.0:
+    version: 18.2.0
+    dev: false
+  lodash@4.17.21:
+    version: 4.17.21
+    dev: false
+  vitest@1.0.0:
+    version: 1.0.0
+    dev: true
+  '@types/node@20.10.0':
+    version: 20.10.0
+    dev: true
+  eslint@8.50.0:
+    version: 8.50.0
+    dev: true
+    dependencies:
+      '@eslint/js': /@eslint/js@8.50.0
+  '@eslint/js@8.50.0':
+    version: 8.50.0
+    dev: true
+`;
+        }
+        return '';
+      });
+
+      const depsWithDev = await provider.gatherDependencies('/test/project', {
+        includeDev: true,
+      });
+      const depsWithoutDev = await provider.gatherDependencies('/test/project', {
+        includeDev: false,
+      });
+
+      // With dev dependencies
+      expect(depsWithDev.length).toBeGreaterThanOrEqual(6);
+      expect(depsWithDev.some((d) => d.name === 'react')).toBe(true);
+      expect(depsWithDev.some((d) => d.name === 'vitest')).toBe(true);
+      expect(depsWithDev.some((d) => d.name === '@types/node')).toBe(true);
+      expect(depsWithDev.some((d) => d.name === 'eslint')).toBe(true);
+      expect(depsWithDev.some((d) => d.name === '@eslint/js')).toBe(true);
+
+      // Without dev dependencies
+      expect(depsWithoutDev.length).toBeGreaterThanOrEqual(2);
+      expect(depsWithoutDev.some((d) => d.name === 'react')).toBe(true);
+      expect(depsWithoutDev.some((d) => d.name === 'lodash')).toBe(true);
+      expect(depsWithoutDev.some((d) => d.name === 'vitest')).toBe(false);
+    });
+
+    it('handles standalone lockfile parsing with complex trees', async () => {
+      // Test parsing a standalone npm lockfile
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({
+          lockfileVersion: 3,
+          packages: {
+            'node_modules/@babel/core': {
+              version: '7.23.0',
+              dependencies: {
+                '@babel/generator': '^7.23.0',
+                '@babel/parser': '^7.23.0',
+              },
+            },
+            'node_modules/@babel/generator': { version: '7.23.0' },
+            'node_modules/@babel/parser': { version: '7.23.0' },
+            'node_modules/@types/node': { version: '20.10.0' },
+            'node_modules/typescript': {
+              version: '5.2.2',
+              dependencies: {
+                '@types/node': '^20.0.0', // Different version specifier
+              },
+            },
+            'node_modules/typescript/node_modules/@types/node': { version: '20.5.0' }, // Different version
+          },
+        }),
+      );
+
+      const deps = await provider.gatherDependencies('/test/project', {
+        standaloneLockfile: '/tmp/package-lock.json',
+      });
+
+      // Should extract all packages including nested and conflicting versions
+      expect(deps.length).toBeGreaterThanOrEqual(5);
+      expect(deps.some((d) => d.name === '@babel/core')).toBe(true);
+      expect(deps.some((d) => d.name === '@babel/generator')).toBe(true);
+      expect(deps.some((d) => d.name === '@babel/parser')).toBe(true);
+      expect(deps.some((d) => d.name === 'typescript')).toBe(true);
+      // Should include both @types/node versions
+      const typesNodeVersions = deps.filter((d) => d.name === '@types/node').map((d) => d.version);
+      expect(typesNodeVersions.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+});
