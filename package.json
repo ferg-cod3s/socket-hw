@@ -1,7 +1,7 @@
 {
   "name": "socket-hw",
   "private": true,
-  "packageManager": "pnpm@10.20.0",
+  "packageManager": "pnpm@10.22.0",
   "workspaces": [
     "cli",
     "web",
@@ -16,17 +16,17 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "@types/node": "^24.9.2",
-    "@typescript-eslint/eslint-plugin": "^8.46.2",
-    "@typescript-eslint/parser": "^8.46.2",
-    "eslint": "^9.38.0",
+    "@types/node": "^24.10.1",
+    "@typescript-eslint/eslint-plugin": "^8.46.4",
+    "@typescript-eslint/parser": "^8.46.4",
+    "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.6",
     "prettier": "^3.6.2",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.5"
+    "vitest": "^4.0.8"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx,cts,mts}": [
@@ -34,5 +34,8 @@
       "pnpm exec prettier --write"
     ],
     "*.{json,yml,yaml,md,css,scss}": "pnpm exec prettier --write"
+  },
+  "dependencies": {
+    "scanner": "link:../../Library/pnpm/global/5/node_modules/scanner"
   }
 }

@@ -1,4 +1,7 @@
 packages:
-  - "cli"
-  - "web"
-  - "packages/*"
+  - cli
+  - web
+  - packages/*
+
+overrides:
+  scanner: link:../../Library/pnpm/global/5/node_modules/scanner

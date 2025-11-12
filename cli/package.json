@@ -21,14 +21,14 @@
     "p-retry": "^7.1.0",
     "pino": "^10.1.0",
     "pino-pretty": "^13.1.2",
-    "semver": "^7.5.4",
-    "yaml": "^2.3.4",
+    "semver": "^7.7.3",
+    "yaml": "^2.8.1",
     "yargs": "^18.0.0"
   },
   "devDependencies": {
     "@types/semver": "^7.7.1",
     "@types/yargs": "^17.0.34",
-    "@vitest/coverage-v8": "^4.0.7",
+    "@vitest/coverage-v8": "^4.0.8",
     "tsup": "^8.5.0"
   }
 }
