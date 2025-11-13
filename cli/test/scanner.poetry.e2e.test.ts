@@ -127,10 +127,10 @@ python-versions = ">=3.7, <4"
     expect(out).toMatch(/HIGH/);
   });
 
-  it('validates Poetry lockfile when --validate-lock is used', async () => {
-    const y = createCli(['.', '--validate-lock']);
+  it('validates Poetry lockfile when --lockfile check is used', async () => {
+    const y = createCli(['.', '--lockfile', 'check']);
 
-    // This test verifies that the scanner runs with validate-lock flag
+    // This test verifies that the scanner runs with lockfile check mode
     // The actual poetry validation would happen in a real environment
     await y.parseAsync();
 

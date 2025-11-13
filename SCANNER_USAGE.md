@@ -1,11 +1,13 @@
 # Vulnerability Scanner - Usage Guide
 
 ## Overview
+
 The CLI scanner is a comprehensive vulnerability scanning tool that can detect and report security issues in your projects across multiple ecosystems (npm, Go, Rust, Python, etc.).
 
 ## Quick Start
 
 ### Single Project Scan
+
 ```bash
 # Scan current directory
 node cli/bin/scanner.js .
@@ -24,6 +26,7 @@ node cli/bin/scanner.js /path/to/project --check-maintenance
 ```
 
 ### Scan All Projects in ~/Github
+
 ```bash
 # Run the comprehensive scanner script
 cd /Users/johnferguson/Github/socket-hw
@@ -31,6 +34,7 @@ cd /Users/johnferguson/Github/socket-hw
 ```
 
 This will:
+
 1. Find all projects with dependency manifests (package.json, go.mod, Cargo.toml, etc.)
 2. Scan each project individually
 3. Generate JSON reports in `./scan-results/` directory
@@ -38,21 +42,22 @@ This will:
 
 ## Command Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `dir` | Directory to scan | `.` (current) |
-| `--dev` | Include devDependencies | `false` |
-| `--validate-lock` | Force lockfile validation | `false` |
-| `--refresh-lock` | Force lockfile refresh | `false` |
-| `--concurrency` | Max concurrent OSV queries | `10` |
-| `--output` | Output format (console/json) | `console` |
-| `--ignore-file` | Path to ignore config file | None |
-| `--check-maintenance` | Check for unmaintained packages | `false` |
+| Option                | Description                     | Default       |
+| --------------------- | ------------------------------- | ------------- |
+| `dir`                 | Directory to scan               | `.` (current) |
+| `--dev`               | Include devDependencies         | `false`       |
+| `--lockfile`          | Lockfile handling mode          | None          |
+| `--concurrency`       | Max concurrent OSV queries      | `10`          |
+| `--output`            | Output format (console/json)    | `console`     |
+| `--ignore-file`       | Path to ignore config file      | None          |
+| `--check-maintenance` | Check for unmaintained packages | `false`       |
 
 ## Output Formats
 
 ### Console Output
+
 Clean, human-readable format with color coding:
+
 - **✓** = No vulnerabilities
 - **✗** = Vulnerabilities found
 - **ℹ** = Information messages
@@ -62,7 +67,9 @@ Clean, human-readable format with color coding:
 ```
 
 ### JSON Output
+
 Structured format for programmatic use:
+
 ```json
 {
   "summary": {
@@ -85,11 +92,46 @@ Structured format for programmatic use:
 ## Examples
 
 ### Example 1: Quick scan with maintenance check
+
 ```bash
 node cli/bin/scanner.js /Users/johnferguson/Github/socket-hw --check-maintenance
 ```
 
+### Example 2: Validate lockfile before scanning
+
+```bash
+node cli/bin/scanner.js /path/to/project --lockfile check
+```
+
+### Example 3: Refresh lockfile and scan latest versions
+
+```bash
+node cli/bin/scanner.js /path/to/project --lockfile refresh
+```
+
+### Example 4: Scan multiple projects
+
+```bash
+for project in /Users/johnferguson/Github/*/; do
+  echo "Scanning $project"
+  node cli/bin/scanner.js "$project" --output json
+done
+```
+
+### Example 5: Get detailed JSON results
+
+```bash
+node cli/bin/scanner.js /path/to/project --output json | jq '.summary'
+```
+
+### Example 6: Ignore known vulnerabilities
+
+```bash
+node cli/bin/scanner.js /path/to/project --ignore-file .vuln-ignore.json
+```
+
 ### Example 2: Scan multiple projects
+
 ```bash
 for project in /Users/johnferguson/Github/*/; do
   echo "Scanning $project"
@@ -98,11 +140,13 @@ done
 ```
 
 ### Example 3: Get detailed JSON results
+
 ```bash
 node cli/bin/scanner.js /path/to/project --output json | jq '.summary'
 ```
 
 ### Example 4: Ignore known vulnerabilities
+
 ```bash
 node cli/bin/scanner.js /path/to/project --ignore-file .vuln-ignore.json
 ```
@@ -122,7 +166,9 @@ The scanner automatically detects and handles:
 ## Results & Reports
 
 ### Scan Results Directory
+
 Results are saved to `./scan-results/` with timestamp:
+
 ```
 scan-results/
 ├── socket-hw_20251108_154200.json
@@ -132,6 +178,7 @@ scan-results/
 ```
 
 ### Parse Results
+
 ```bash
 # View all vulnerable packages
 jq '.packages[] | select(.vulnerabilities | length > 0)' scan-results/*.json
@@ -146,18 +193,21 @@ jq '.packages[] | select(.vulnerabilities[] | select(.severity == "HIGH"))' scan
 ## Testing & Development
 
 ### Run Scanner Tests
+
 ```bash
 cd cli
 pnpm test
 ```
 
 ### Build Scanner
+
 ```bash
 cd cli
 pnpm build
 ```
 
 ### Debug Mode
+
 ```bash
 # With detailed logging
 DEBUG=* node cli/bin/scanner.js /path/to/project
@@ -166,6 +216,7 @@ DEBUG=* node cli/bin/scanner.js /path/to/project
 ## Integration Options
 
 ### GitHub Actions
+
 ```yaml
 - name: Scan vulnerabilities
   run: node cli/bin/scanner.js . --output json > scan-results.json
@@ -177,6 +228,7 @@ DEBUG=* node cli/bin/scanner.js /path/to/project
 ```
 
 ### Pre-commit Hook
+
 ```bash
 #!/bin/bash
 node ./cli/bin/scanner.js . --output json > /tmp/scan.json
@@ -190,14 +242,17 @@ fi
 ## Troubleshooting
 
 ### No dependencies found
+
 - Ensure the directory contains a valid manifest file (package.json, go.mod, etc.)
 - Check that the scanner can read the manifest file
 
 ### Slow scans
+
 - Use `--concurrency` to adjust parallel requests: `--concurrency 5`
 - Exclude devDependencies with `--dev false`
 
 ### JSON parse errors
+
 - Ensure `jq` is installed: `brew install jq`
 - Check the raw output without piping to jq first
 
@@ -216,6 +271,7 @@ fi
 ## Support
 
 For issues or questions:
+
 - Check existing test cases in `cli/test/`
 - Review the source code in `cli/src/`
 - Build commands: `cd cli && pnpm build`

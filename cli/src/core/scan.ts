@@ -13,8 +13,7 @@ import { updateProgress } from '../utils/progress.js';
 
 export interface ScanOptions {
   includeDev?: boolean;
-  validateLock?: boolean;
-  refreshLock?: boolean;
+  lockfileMode?: 'check' | 'refresh' | 'enforce';
   concurrency?: number;
   ignoreFile?: string;
   checkMaintenance?: boolean;
@@ -26,6 +25,39 @@ export interface ScanResult {
   scanDurationMs: number;
   detection: DetectionResult;
   maintenanceInfo?: Map<string, MaintenanceInfo>;
+}
+
+function getLockfileOptions(mode?: 'check' | 'refresh' | 'enforce') {
+  switch (mode) {
+    case 'check':
+      return {
+        forceRefresh: false,
+        forceValidate: true,
+        createIfMissing: false,
+        validateIfPresent: false,
+      };
+    case 'refresh':
+      return {
+        forceRefresh: true,
+        forceValidate: false,
+        createIfMissing: false,
+        validateIfPresent: false,
+      };
+    case 'enforce':
+      return {
+        forceRefresh: false,
+        forceValidate: false,
+        createIfMissing: true,
+        validateIfPresent: true,
+      };
+    default:
+      return {
+        forceRefresh: false,
+        forceValidate: false,
+        createIfMissing: false,
+        validateIfPresent: false,
+      };
+  }
 }
 
 export async function scanPath(inputPath: string, opts: ScanOptions = {}): Promise<ScanResult> {
@@ -41,14 +73,12 @@ export async function scanPath(inputPath: string, opts: ScanOptions = {}): Promi
 
     // Check if filename matches exactly OR ends with a supported filename
     // This handles temp files like "8a161a-pnpm-lock.yaml"
-    const isSupported = supportedSet.has(file) ||
-      Array.from(supportedSet).some(supported => file.endsWith(supported));
+    const isSupported =
+      supportedSet.has(file) || Array.from(supportedSet).some((supported) => file.endsWith(supported));
 
     if (!isSupported) {
       const supported = Array.from(supportedSet).join(', ');
-      throw new Error(
-        `Unsupported file: ${file}. Supported files: ${supported}`
-      );
+      throw new Error(`Unsupported file: ${file}. Supported files: ${supported}`);
     }
 
     // If scanning a standalone lockfile (not a manifest), remember the full path for direct parsing
@@ -66,12 +96,8 @@ export async function scanPath(inputPath: string, opts: ScanOptions = {}): Promi
   updateProgress('detecting-ecosystem', 10, `Detected ${detection.name} ecosystem`);
 
   // Ensure/validate lockfile per options. Default to no-ops to avoid spawning package managers in tests.
-  await provider.ensureLockfile(dir, {
-    forceRefresh: opts.refreshLock ?? false,
-    forceValidate: opts.validateLock ?? false,
-    createIfMissing: false,
-    validateIfPresent: false,
-  });
+  const lockfileOpts = getLockfileOptions(opts.lockfileMode);
+  await provider.ensureLockfile(dir, lockfileOpts);
 
   updateProgress('gathering-dependencies', 20, 'Gathering dependencies from lockfile...');
   const deps = await provider.gatherDependencies(dir, {
@@ -113,9 +139,7 @@ export async function scanPath(inputPath: string, opts: ScanOptions = {}): Promi
   if (opts.checkMaintenance) {
     updateProgress('finalizing', 85, 'Checking package maintenance status...');
     maintenanceInfo = await checkMaintenanceBatch(deps, opts.concurrency ?? 5);
-    const unmaintainedCount = Array.from(maintenanceInfo.values()).filter(
-      (info) => info.isUnmaintained
-    ).length;
+    const unmaintainedCount = Array.from(maintenanceInfo.values()).filter((info) => info.isUnmaintained).length;
     if (unmaintainedCount > 0) {
       logger.info(`Found ${unmaintainedCount} unmaintained package(s)`);
     }
@@ -134,7 +158,7 @@ export async function scanPath(inputPath: string, opts: ScanOptions = {}): Promi
 
 async function scanPackages(
   packages: Dependency[],
-  opts: { concurrency: number }
+  opts: { concurrency: number },
 ): Promise<Record<string, UnifiedAdvisory[]>> {
   const results: Record<string, UnifiedAdvisory[]> = {};
 
@@ -153,11 +177,15 @@ async function scanPackages(
     const totalBatches = Math.ceil(packages.length / MAX_BATCH_SIZE);
     const progressPercent = 30 + Math.floor((i / packages.length) * 40); // 30-70%
 
-    updateProgress('scanning-packages', progressPercent,
-      `Scanning batch ${batchNumber}/${totalBatches} (${i}/${packages.length} packages)`, {
+    updateProgress(
+      'scanning-packages',
+      progressPercent,
+      `Scanning batch ${batchNumber}/${totalBatches} (${i}/${packages.length} packages)`,
+      {
         totalDeps: packages.length,
         depsScanned: i,
-      });
+      },
+    );
 
     try {
       const batchQueries: OsvBatchQuery[] = batch.map((pkg) => ({
@@ -247,7 +275,7 @@ async function scanPackages(
         const advisories: UnifiedAdvisory[] = [];
         for (const adv of ghsaResult) {
           const isAffected = adv.vulnerabilities.some((v) =>
-            isVersionInRange(pkg.version, v.vulnerableVersionRange, pkg.ecosystem)
+            isVersionInRange(pkg.version, v.vulnerableVersionRange, pkg.ecosystem),
           );
 
           if (isAffected) {
@@ -279,7 +307,7 @@ async function scanPackages(
           ghsaRateLimitWarning = err.message;
           logger.warn(
             { package: pkg.name, message: err.message },
-            'GHSA API rate limit encountered - falling back to OSV results only'
+            'GHSA API rate limit encountered - falling back to OSV results only',
           );
         } else {
           logger.debug({ err, package: pkg.name }, 'GHSA query failed');
@@ -291,7 +319,7 @@ async function scanPackages(
           results[pkg.name] = osvAdvisories;
         }
       }
-    })
+    }),
   );
 
   await Promise.all(ghsaQueries);
@@ -301,7 +329,7 @@ async function scanPackages(
     logger.warn(
       { message: ghsaRateLimitWarning },
       'GHSA queries encountered rate limiting. Scan results include OSV data only. ' +
-      'For GHSA results, retry the scan later or use a GitHub PAT with higher rate limits.'
+        'For GHSA results, retry the scan later or use a GitHub PAT with higher rate limits.',
     );
   }
 
@@ -403,7 +431,8 @@ function pLimit(concurrency: number) {
           if (queue.length > 0) queue.shift()?.();
         }
       };
-      if (running < concurrency) run(); else queue.push(run);
+      if (running < concurrency) run();
+      else queue.push(run);
     });
 }
 
@@ -464,5 +493,3 @@ function extractCveIdsFromGhsa(adv: GhsaAdvisory): string[] {
 
   return cveIds;
 }
-
-
